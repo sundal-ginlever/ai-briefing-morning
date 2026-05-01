@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morning Briefing</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="auth-screen">
+  <div class="auth-box">
+    <h1>☀️ Morning Briefing</h1>
+    <div style="display:flex;gap:0;margin-bottom:24px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <button id="tab-login-btn" onclick="switchAuthTab('login')"
+        style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:500">로그인</button>
+      <button id="tab-signup-btn" onclick="switchAuthTab('signup')"
+        style="flex:1;padding:9px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-size:14px">회원가입</button>
+    </div>
+
+    <div id="auth-login">
+      <label>이메일</label>
+      <input id="auth-email" type="email" placeholder="you@example.com">
+      <label>비밀번호</label>
+      <input id="auth-pass" type="password" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter') login()">
+      <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="login()">로그인</button>
+      <p style="font-size:13px;color:var(--muted);margin-top:16px;text-align:center">
+        계정이 없으신가요?
+        <a href="#" onclick="switchAuthTab('signup')" style="color:var(--accent)">회원가입</a>
+      </p>
+    </div>
+
+    <div id="auth-signup" style="display:none">
+      <label>이메일</label>
+      <input id="signup-email" type="email" placeholder="you@example.com">
+      <label>비밀번호 (8자 이상)</label>
+      <input id="signup-pass" type="password" placeholder="••••••••">
+      <label>비밀번호 확인</label>
+      <input id="signup-pass2" type="password" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter') signup()">
+      <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="signup()">가입하기</button>
+      <p style="font-size:13px;color:var(--muted);margin-top:16px;text-align:center">
+        이미 계정이 있으신가요?
+        <a href="#" onclick="switchAuthTab('login')" style="color:var(--accent)">로그인</a>
+      </p>
+    </div>
+
+    <p id="auth-err" style="color:var(--red);font-size:13px;margin-top:12px"></p>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div class="shell" id="app" style="display:none">
+  <aside class="sidebar">
+    <div class="logo">☀️ <span>Briefing</span></div>
+    <nav>
+      <a href="#" class="active" onclick="showTab('home',this)">🏠 홈</a>
+      <a href="#" onclick="showTab('settings',this)">⚙️ 설정</a>
+      <a href="#" onclick="showTab('history',this)">📜 히스토리</a>
+    </nav>
+    <div style="margin-top:auto;padding:20px">
+      <div id="user-email" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+      <button class="btn btn-outline" style="width:100%;font-size:13px" onclick="logout()">로그아웃</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ── 홈 탭 ── -->
+    <div id="tab-home">
+      <h1>오늘의 브리핑</h1>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-num" id="stat-total">—</div>
+          <div class="stat-label">총 브리핑 수</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" id="stat-streak">—</div>
+          <div class="stat-label">연속 일수</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" id="stat-schedule">—</div>
+          <div class="stat-label">스케줄 시각 (KST)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">수동 실행</div>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:20px">
+          지금 즉시 브리핑을 생성하고 이메일로 받아보세요.
+        </p>
+        <button class="btn-run" id="run-btn" onclick="manualRun()">
+          <span id="run-label">▶ 지금 실행</span>
+          <span id="run-spin" class="spin hidden"></span>
+        </button>
+        <div id="run-msg" style="margin-top:14px;font-size:14px;color:var(--muted)"></div>
+      </div>
+
+      <div class="card" id="latest-card" style="display:none">
+        <div class="card-title">최근 브리핑</div>
+        <div id="latest-content"></div>
+      </div>
+    </div>
+
+    <!-- ── 설정 탭 ── -->
+    <div id="tab-settings" class="hidden">
+      <h1>설정</h1>
+      <div class="card">
+        <div class="card-title">뉴스 설정</div>
+        <label>국가</label>
+        <select id="s-country">
+          <option value="us">🇺🇸 미국 (us)</option>
+          <option value="kr">🇰🇷 한국 (kr)</option>
+          <option value="gb">🇬🇧 영국 (gb)</option>
+          <option value="jp">🇯🇵 일본 (jp)</option>
+        </select>
+        <label>카테고리 (콤마 구분)</label>
+        <input id="s-categories" placeholder="general,technology">
+        <label>기사 수</label>
+        <input id="s-pagesize" type="number" min="1" max="10">
+      </div>
+
+      <div class="card">
+        <div class="card-title">AI 설정</div>
+        <div class="row">
+          <div>
+            <label>LLM 프로바이더</label>
+            <select id="s-llm">
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Gemini</option>
+              <option value="ollama">Ollama (로컬)</option>
+            </select>
+          </div>
+          <div>
+            <label>모델명</label>
+            <input id="s-model" placeholder="gpt-4o-mini">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>TTS 음성</label>
+            <select id="s-voice">
+              <option value="coral">coral</option>
+              <option value="alloy">alloy</option>
+              <option value="echo">echo</option>
+              <option value="fable">fable</option>
+              <option value="nova">nova</option>
+              <option value="onyx">onyx</option>
+              <option value="shimmer">shimmer</option>
+            </select>
+          </div>
+          <div>
+            <label>읽기 속도</label>
+            <input id="s-speed" type="number" step="0.1" min="0.5" max="2.0">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">브리핑 설정</div>
+        <div class="row">
+          <div>
+            <label>언어</label>
+            <input id="s-lang" placeholder="English 또는 Korean">
+          </div>
+          <div>
+            <label>목표 길이 (초)</label>
+            <input id="s-secs" type="number" min="30" max="300">
+          </div>
+        </div>
+        <label>스케줄 시각 (UTC 기준)</label>
+        <select id="s-hour">
+          <option value="0">00:00 UTC = 09:00 KST</option>
+          <option value="1">01:00 UTC = 10:00 KST</option>
+          <option value="2">02:00 UTC = 11:00 KST</option>
+          <option value="3">03:00 UTC = 12:00 KST</option>
+          <option value="4">04:00 UTC = 13:00 KST</option>
+          <option value="5">05:00 UTC = 14:00 KST</option>
+          <option value="6">06:00 UTC = 15:00 KST</option>
+          <option value="7">07:00 UTC = 16:00 KST</option>
+          <option value="8">08:00 UTC = 17:00 KST</option>
+          <option value="9">09:00 UTC = 18:00 KST</option>
+          <option value="10">10:00 UTC = 19:00 KST</option>
+          <option value="11">11:00 UTC = 20:00 KST</option>
+          <option value="12">12:00 UTC = 21:00 KST</option>
+          <option value="13">13:00 UTC = 22:00 KST</option>
+          <option value="14">14:00 UTC = 23:00 KST</option>
+          <option value="15">15:00 UTC = 00:00 KST</option>
+          <option value="16">16:00 UTC = 01:00 KST</option>
+          <option value="17">17:00 UTC = 02:00 KST</option>
+          <option value="18">18:00 UTC = 03:00 KST</option>
+          <option value="19">19:00 UTC = 04:00 KST</option>
+          <option value="20">20:00 UTC = 05:00 KST</option>
+          <option value="21">21:00 UTC = 06:00 KST</option>
+          <option value="22">22:00 UTC = 07:00 KST</option>
+          <option value="23">23:00 UTC = 08:00 KST</option>
+        </select>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+          <input id="s-enabled" type="checkbox" style="width:auto;margin:0">
+          <label style="margin:0">스케줄 활성화</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">수신 이메일</div>
+        <label>이메일 (비워두면 계정 이메일 사용)</label>
+        <input id="s-email" type="email" placeholder="optional@email.com">
+      </div>
+
+      <button class="btn btn-primary" id="save-btn" onclick="saveSettings()">변경사항 저장</button>
+    </div>
+
+    <!-- ── 히스토리 탭 ── -->
+    <div id="tab-history" class="hidden">
+      <h1>브리핑 히스토리</h1>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table>
+          <thead>
+            <tr>
+              <th>날짜</th>
+              <th>내용 미리보기</th>
+              <th>LLM</th>
+              <th>시간</th>
+              <th>오디오</th>
+            </tr>
+          </thead>
+          <tbody id="history-body">
+            <tr><td colspan="5" style="text-align:center;padding:32px;color:var(--muted)">로딩 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

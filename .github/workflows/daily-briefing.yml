@@ -1,0 +1,90 @@
+# .github/workflows/daily-briefing.yml
+#
+# 매 정시마다 실행 → runner.js 내부에서 schedule_hour_utc가 일치하는 사용자만 처리.
+# 사용자별로 원하는 시각을 대시보드에서 설정 가능.
+#
+# KST 기준 예시:
+#   06:00 KST = 21:00 UTC (전날)
+#   07:00 KST = 22:00 UTC (전날)
+#   08:00 KST = 23:00 UTC (전날)
+
+name: Morning Briefing Scheduler
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # 매 정시마다 실행 (GitHub Actions는 분 단위 최소)
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — 뉴스 수집만, LLM/이메일 없음'
+        type: boolean
+        default: false
+      user_id:
+        description: '특정 사용자만 실행 (UUID, 비워두면 전체 스케줄)'
+        type: string
+        default: ''
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run pipeline
+        env:
+          # ── 필수 Secrets (GitHub repo → Settings → Secrets) ──────────────
+          NEWS_API_KEY:          ${{ secrets.NEWS_API_KEY }}
+          OPENAI_API_KEY:        ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_ANON_KEY:     ${{ secrets.SUPABASE_ANON_KEY }}
+          SMTP_USER:             ${{ secrets.SMTP_USER }}
+          SMTP_PASS:             ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM:            ${{ secrets.EMAIL_FROM }}
+
+          # ── 선택 Secrets ──────────────────────────────────────────────────
+          GEMINI_API_KEY:        ${{ secrets.GEMINI_API_KEY }}
+
+          # ── Variables (GitHub repo → Settings → Variables) ────────────────
+          # 아래 값들은 user_settings DB로 사용자별 관리됨.
+          # 환경변수는 Supabase 미설정 시 단일유저 폴백용 기본값.
+          ADMIN_EMAILS:          ${{ vars.ADMIN_EMAILS }}
+          LLM_PROVIDER:          ${{ vars.LLM_PROVIDER || 'openai' }}
+          TTS_PROVIDER:          ${{ vars.TTS_PROVIDER || 'openai' }}
+          STORAGE_PROVIDER:      supabase
+          EMAIL_PROVIDER:        smtp
+          STORAGE_BUCKET:        ${{ vars.STORAGE_BUCKET || 'briefing-audio' }}
+          # 폴백용 단일 수신 이메일 (Phase 1 호환)
+          EMAIL_TO:              ${{ secrets.EMAIL_TO }}
+          # 폴백용 뉴스 설정
+          NEWS_COUNTRY:          ${{ vars.NEWS_COUNTRY || 'us' }}
+          NEWS_CATEGORIES:       ${{ vars.NEWS_CATEGORIES || 'general,technology' }}
+          NEWS_PAGE_SIZE:        ${{ vars.NEWS_PAGE_SIZE || '3' }}
+          BRIEFING_LANGUAGE:     ${{ vars.BRIEFING_LANGUAGE || 'English' }}
+          BRIEFING_TARGET_SECONDS: ${{ vars.BRIEFING_TARGET_SECONDS || '60' }}
+
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            node src/pipeline/runner.js --dry-run
+          elif [ -n "${{ github.event.inputs.user_id }}" ]; then
+            node src/pipeline/runner.js --user=${{ github.event.inputs.user_id }}
+          else
+            node src/pipeline/runner.js
+          fi
+
+      - name: Annotate failure
+        if: failure()
+        run: echo "::error title=Pipeline Failed::Check logs above for details."

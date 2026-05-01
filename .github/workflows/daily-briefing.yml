@@ -12,7 +12,7 @@ name: Morning Briefing Scheduler
 
 on:
   schedule:
-    - cron: '0 * * * *'   # 매 정시마다 실행 (GitHub Actions는 분 단위 최소)
+    - cron: '30 * * * *'   # 매시 30분에 실행 (대시보드에서 06:00 선택 시 06:30에 발송)
 
   workflow_dispatch:
     inputs:
@@ -34,10 +34,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

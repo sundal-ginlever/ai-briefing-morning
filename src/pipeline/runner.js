@@ -15,7 +15,8 @@ import { saveBriefingLog }     from '../providers/db.js'
 import { logger }              from '../utils/logger.js'
 import { todaySlug, todayReadable } from '../utils/date.js'
 import {
-  getActiveUsersForHour,
+  getActiveUsersToProcess,
+  hasLogForDate,
   getUserSettings,
   settingsToOverride,
 } from '../api/users.js'

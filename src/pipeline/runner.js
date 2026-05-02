@@ -187,30 +187,49 @@ async function runWithConcurrency(tasks, concurrency) {
   return results
 }
 
-// ─── 멀티유저 스케줄 (Phase 3: 병렬화) ────────────────────────────────────────
+// ─── 멀티유저 스케줄 (Phase 4: 지연 실행 대응 & 중복 방지) ──────────────────────
 
 export async function runScheduledUsers() {
   const schedulerStart = Date.now()
   const hourUtc = new Date().getUTCHours()
-  logger.info(`[scheduler] UTC hour=${hourUtc} | concurrency=${MAX_CONCURRENCY}`)
+  const date    = todaySlug()
+  logger.info(`[scheduler] UTC hour=${hourUtc} | Date=${date} | concurrency=${MAX_CONCURRENCY}`)
 
-  let users
+  let candidates
   try {
-    users = await getActiveUsersForHour(hourUtc)
+    // 1) 현재 시간(hourUtc)보다 일찍 받기로 설정된 모든 활성 유저 조회
+    candidates = await getActiveUsersToProcess(hourUtc)
   } catch (err) {
-    logger.error(`[scheduler] Failed to get active users from DB: ${err.message}`)
+    logger.error(`[scheduler] Failed to get candidates from DB: ${err.message}`)
     return
   }
 
-  if (!users || users.length === 0) {
-    logger.info(`[scheduler] No users scheduled for hour=${hourUtc}`)
+  if (!candidates || candidates.length === 0) {
+    logger.info(`[scheduler] No users scheduled up to hour=${hourUtc}`)
     return
   }
 
-  logger.info(`[scheduler] Running ${users.length} user(s) with max ${MAX_CONCURRENCY} concurrency`)
+  // 2) 당일 이미 브리핑을 받은 유저 필터링 (중복 발송 방지)
+  const usersToRun = []
+  for (const row of candidates) {
+    const userId = row.a_user_profiles.id
+    const alreadyDone = await hasLogForDate(userId, date)
+    if (!alreadyDone) {
+      usersToRun.push(row)
+    } else {
+      logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — already processed for ${date}`)
+    }
+  }
 
-  // 각 유저에 대한 태스크 함수 배열 생성
-  const tasks = users.map(row => {
+  if (usersToRun.length === 0) {
+    logger.info(`[scheduler] All candidates already processed for ${date}`)
+    return
+  }
+
+  logger.info(`[scheduler] Running ${usersToRun.length} user(s) who are pending for ${date}`)
+
+  // 3) 태스크 생성 및 실행
+  const tasks = usersToRun.map(row => {
     const profile  = row.a_user_profiles
     const override = settingsToOverride(row)
     if (!override.email.to) override.email.to = profile.email
@@ -218,7 +237,6 @@ export async function runScheduledUsers() {
     return () => runPipeline({ userId: profile.id, override, useCache: true })
   })
 
-  // 동시성 제어된 병렬 실행
   const results = await runWithConcurrency(tasks, MAX_CONCURRENCY)
 
   // 결과 집계

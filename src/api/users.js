@@ -8,12 +8,11 @@ import { logger }      from '../utils/logger.js'
 // ─── 조회 ─────────────────────────────────────────────────────────────────────
 
 /**
- * 스케줄이 활성화된 모든 사용자와 설정을 가져옴 (파이프라인용).
- * Phase 3: 필요한 컬럼만 SELECT하여 네트워크 전송량 최소화.
- * Phase 4: custom_prompt, timezone 필드 추가
+ * 스케줄이 활성화된 사용자 중, 현재 시간(UTC) 이하로 설정된 모든 사용자를 가져옴.
+ * (GitHub Actions의 지연 실행에 대비하기 위함)
  * @param {number} hourUtc - 현재 UTC 시간 (0-23)
  */
-export async function getActiveUsersForHour(hourUtc) {
+export async function getActiveUsersToProcess(hourUtc) {
   const sb = getSupabase()
   const { data, error } = await sb
     .from('a_user_settings')
@@ -23,14 +22,30 @@ export async function getActiveUsersForHour(hourUtc) {
       tts_provider, tts_voice, tts_speed,
       briefing_language, briefing_target_secs, custom_prompt,
       schedule_hour_utc, timezone, delivery_email,
+      schedule_enabled,
       a_user_profiles!inner (id, email, display_name, is_active)
     `)
     .eq('schedule_enabled', true)
-    .eq('schedule_hour_utc', hourUtc)
+    .lte('schedule_hour_utc', hourUtc)  // 현재 시간 이하인 모든 유저
     .eq('a_user_profiles.is_active', true)
 
-  if (error) throw new Error(`getActiveUsersForHour failed: ${error.message}`)
+  if (error) throw new Error(`getActiveUsersToProcess failed: ${error.message}`)
   return data ?? []
+}
+
+/**
+ * 특정 날짜에 이미 브리핑 로그가 있는지 확인.
+ */
+export async function hasLogForDate(userId, date) {
+  const sb = getSupabase()
+  const { count, error } = await sb
+    .from('a_briefing_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('date', date)
+
+  if (error) throw new Error(`hasLogForDate failed: ${error.message}`)
+  return count > 0
 }
 
 /**

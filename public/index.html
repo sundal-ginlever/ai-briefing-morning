@@ -140,6 +140,14 @@
         </div>
         <div class="row">
           <div>
+            <label>TTS 프로바이더</label>
+            <select id="s-ttsprovider" onchange="updateVoiceList()">
+              <option value="openai">OpenAI</option>
+              <option value="google">Google Cloud</option>
+              <option value="none">사용 안 함</option>
+            </select>
+          </div>
+          <div>
             <label>TTS 음성</label>
             <select id="s-voice">
               <option value="coral">coral</option>

@@ -199,7 +199,8 @@ async function loadSettings() {
   document.getElementById('s-pagesize').value   = s.news_page_size
   document.getElementById('s-llm').value        = s.llm_provider
   document.getElementById('s-model').value      = s.llm_model
-  document.getElementById('s-voice').value      = s.tts_voice
+  document.getElementById('s-ttsprovider').value = s.tts_provider
+  updateVoiceList(s.tts_voice)
   document.getElementById('s-speed').value      = s.tts_speed
   document.getElementById('s-lang').value       = s.briefing_language
   document.getElementById('s-secs').value       = s.briefing_target_secs
@@ -219,6 +220,7 @@ async function saveSettings() {
     news_page_size:        parseInt(document.getElementById('s-pagesize').value),
     llm_provider:          document.getElementById('s-llm').value,
     llm_model:             document.getElementById('s-model').value,
+    tts_provider:          document.getElementById('s-ttsprovider').value,
     tts_voice:             document.getElementById('s-voice').value,
     tts_speed:             parseFloat(document.getElementById('s-speed').value),
     briefing_language:     document.getElementById('s-lang').value,
@@ -262,3 +264,41 @@ function toast(msg, type = 'ok') {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 loadConfig()
+// ── Voice List Helper ──────────────────────────────────────────────────────
+function updateVoiceList(selectedVoice = null) {
+  const provider = document.getElementById('s-ttsprovider').value
+  const voiceSelect = document.getElementById('s-voice')
+  
+  const voices = {
+    openai: [
+      { v: 'coral',   n: 'Coral (Warm & Clear)' },
+      { v: 'ash',     n: 'Ash (Soft & Crisp)' },
+      { v: 'sage',    n: 'Sage (Natural & Calm)' },
+      { v: 'alloy',   n: 'Alloy (Neutral)' },
+      { v: 'echo',    n: 'Echo (Deep)' },
+      { v: 'fable',   n: 'Fable (British)' },
+      { v: 'onyx',    n: 'Onyx (Strong)' },
+      { v: 'nova',    n: 'Nova (Energetic)' },
+      { v: 'shimmer', n: 'Shimmer (Soft)' }
+    ],
+    google: [
+      { v: 'ko-KR-Neural2-A',  n: '한국어 (여성 - Neural2)' },
+      { v: 'ko-KR-Neural2-B',  n: '한국어 (남성 - Neural2)' },
+      { v: 'ko-KR-Neural2-C',  n: '한국어 (남성 2 - Neural2)' },
+      { v: 'ko-KR-Wavenet-A',  n: '한국어 (여성 - Wavenet)' },
+      { v: 'en-US-Neural2-F',  n: 'English (US - Neural2)' },
+      { v: 'en-US-Neural2-D',  n: 'English (US - Male)' },
+      { v: 'ja-JP-Neural2-B',  n: '日本語 (여성 - Neural2)' }
+    ],
+    none: [
+      { v: 'none', n: 'N/A' }
+    ]
+  }
+
+  const list = voices[provider] || voices.openai
+  voiceSelect.innerHTML = list.map(v => `<option value="${v.v}">${v.n}</option>`).join('')
+  
+  if (selectedVoice) {
+    voiceSelect.value = selectedVoice
+  }
+}

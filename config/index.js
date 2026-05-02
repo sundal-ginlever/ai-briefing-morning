@@ -40,7 +40,7 @@ export const config = {
   llm: {
     provider: llmProvider,
     openai:  { apiKey: optional('OPENAI_API_KEY'), model: optional('OPENAI_MODEL', 'gpt-4o-mini') },
-    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_MODEL', 'gemini-1.5-flash') },
+    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_MODEL', 'gemini-2.5-flash') },
     ollama:  { baseUrl: optional('OLLAMA_BASE_URL', 'http://localhost:11434'), model: optional('OLLAMA_MODEL', 'llama3.2') },
   },
   tts: {

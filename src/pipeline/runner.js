@@ -247,8 +247,8 @@ export async function runScheduledUsers() {
   // 실패한 유저 상세 로깅
   results.forEach((r, i) => {
     if (r.status === 'rejected') {
-      const profile = users[i].a_user_profiles
-      logger.error(`[scheduler] Failed userId=${profile.id}: ${r.reason?.message}`)
+      const profile = usersToRun[i].a_user_profiles
+      logger.error(`[scheduler] Failed userId=${profile.id}: ${r.reason?.message || r.reason}`)
     }
   })
 

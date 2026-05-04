@@ -94,9 +94,9 @@ function clearExpiredNewsCache() {
 
 // ─── 단일 사용자 파이프라인 ───────────────────────────────────────────────────
 
-export async function runPipeline({ userId = null, override = {}, useCache = false } = {}) {
+export async function runPipeline({ userId = null, override = {}, useCache = false, forceDate = null } = {}) {
   const startTime = Date.now()
-  const date      = todaySlug()
+  const date      = forceDate || todaySlug(override.timezone || 'UTC')
   const dateLabel = todayReadable()
   const userTag   = userId ? `[user:${userId.slice(0,8)}]` : '[default]'
 
@@ -193,8 +193,7 @@ async function runWithConcurrency(tasks, concurrency) {
 export async function runScheduledUsers() {
   const schedulerStart = Date.now()
   const hourUtc = new Date().getUTCHours()
-  const date    = todaySlug()
-  logger.info(`[scheduler] UTC hour=${hourUtc} | Date=${date} | concurrency=${MAX_CONCURRENCY}`)
+  logger.info(`[scheduler] UTC hour=${hourUtc} | concurrency=${MAX_CONCURRENCY}`)
 
   let candidates
   try {
@@ -214,11 +213,14 @@ export async function runScheduledUsers() {
   const usersToRun = []
   for (const row of candidates) {
     const userId = row.a_user_profiles.id
+    const userTz = row.timezone || 'Asia/Seoul'
+    const date   = todaySlug(userTz) // 사용자 시간대 기준 날짜 계산
+
     const alreadyDone = await hasLogForDate(userId, date)
     if (!alreadyDone) {
-      usersToRun.push(row)
+      usersToRun.push({ ...row, calculatedDate: date })
     } else {
-      logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — already processed for ${date}`)
+      logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — already processed for ${date} (${userTz})`)
     }
   }
 
@@ -227,15 +229,15 @@ export async function runScheduledUsers() {
     return
   }
 
-  logger.info(`[scheduler] Running ${usersToRun.length} user(s) who are pending for ${date}`)
+  logger.info(`[scheduler] Running ${usersToRun.length} user(s) pending for their respective dates`)
 
   // 3) 태스크 생성 및 실행
-  const tasks = usersToRun.map(row => {
-    const profile  = row.a_user_profiles
-    const override = settingsToOverride(row)
-    if (!override.email.to) override.email.to = profile.email
-
-    return () => runPipeline({ userId: profile.id, override, useCache: true })
+    return () => runPipeline({ 
+      userId:   profile.id, 
+      override, 
+      useCache: true,
+      forceDate: row.calculatedDate // 미리 계산된 날짜 전달
+    })
   })
 
   const results = await runWithConcurrency(tasks, MAX_CONCURRENCY)

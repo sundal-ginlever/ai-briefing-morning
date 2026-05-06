@@ -225,13 +225,16 @@ export async function runScheduledUsers() {
   }
 
   if (usersToRun.length === 0) {
-    logger.info(`[scheduler] All candidates already processed for ${date}`)
+    logger.info(`[scheduler] All candidates already processed.`)
     return
   }
 
   logger.info(`[scheduler] Running ${usersToRun.length} user(s) pending for their respective dates`)
 
   // 3) 태스크 생성 및 실행
+  const tasks = usersToRun.map(row => {
+    const profile  = row.a_user_profiles
+    const override = settingsToOverride(row)
     return () => runPipeline({ 
       userId:   profile.id, 
       override, 

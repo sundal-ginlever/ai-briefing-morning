@@ -151,6 +151,7 @@ export function settingsToOverride(s) {
       model:    s.llm_model,
     },
     tts: {
+      provider: s.tts_provider,
       voice: s.tts_voice,
       speed: s.tts_speed,
     },

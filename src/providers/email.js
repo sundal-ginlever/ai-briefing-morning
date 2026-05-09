@@ -18,7 +18,7 @@ export async function sendBriefingEmail({ audioUrl, script, headlines, date, to 
     return
   }
 
-  logger.info(`[email] sending to ${config.email.to}...`)
+  logger.info(`[email] sending to ${to ?? config.email.to}...`)
 
   const { createTransport } = await import('nodemailer')
   const transporter = createTransport({

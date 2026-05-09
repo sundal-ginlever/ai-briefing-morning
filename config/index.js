@@ -57,7 +57,7 @@ export const config = {
   },
   storage: {
     provider:  storageProvider,
-    bucket:    optional('STORAGE_BUCKET',     'briefing-audio'),
+    bucket:    optional('STORAGE_BUCKET',     'ai-briefing-audio'),
     localPath: optional('LOCAL_STORAGE_PATH', './output'),
   },
   email: {

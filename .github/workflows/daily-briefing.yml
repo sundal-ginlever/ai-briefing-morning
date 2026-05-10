@@ -66,7 +66,7 @@ jobs:
           TTS_PROVIDER:          ${{ vars.TTS_PROVIDER || 'openai' }}
           STORAGE_PROVIDER:      supabase
           EMAIL_PROVIDER:        smtp
-          STORAGE_BUCKET:        ${{ vars.STORAGE_BUCKET || 'briefing-audio' }}
+          STORAGE_BUCKET:        ${{ vars.STORAGE_BUCKET || 'ai-briefing-audio' }}
           # 폴백용 단일 수신 이메일 (Phase 1 호환)
           EMAIL_TO:              ${{ secrets.EMAIL_TO }}
           # 폴백용 뉴스 설정

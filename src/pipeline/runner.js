@@ -129,8 +129,32 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
   logger.info(`${userTag} Script: "${script.slice(0,80)}..."`)
 
   // Step 3
-  logger.info(`${userTag} [3/6] Synthesizing audio`)
-  const audioBuffer = await synthesizeSpeech(script, override)
+  logger.info(`${userTag} [3/6] Synthesizing audio (with pauses)`)
+  const scriptChunks = script.split(/\[PAUSE\]/i).map(c => c.trim()).filter(Boolean)
+  const audioBuffers = []
+  
+  let silenceBuf = null
+  try {
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { fileURLToPath } = await import('url')
+    const __dirname = await import('path').then(p => p.dirname(fileURLToPath(import.meta.url)))
+    silenceBuf = readFileSync(join(__dirname, '../assets/silence_1s.mp3'))
+  } catch (e) {
+    logger.warn(`[tts] Failed to load silence_1s.mp3: ${e.message}`)
+  }
+
+  for (let i = 0; i < scriptChunks.length; i++) {
+    logger.info(`${userTag} Synthesizing chunk ${i+1}/${scriptChunks.length}`)
+    const buf = await synthesizeSpeech(scriptChunks[i], override)
+    if (buf) {
+      audioBuffers.push(buf)
+      if (i < scriptChunks.length - 1 && silenceBuf) {
+        audioBuffers.push(silenceBuf)
+      }
+    }
+  }
+  const audioBuffer = audioBuffers.length > 0 ? Buffer.concat(audioBuffers) : null
 
   // Step 4
   logger.info(`${userTag} [4/6] Saving audio`)

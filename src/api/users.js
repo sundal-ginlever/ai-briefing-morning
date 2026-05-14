@@ -17,7 +17,7 @@ export async function getActiveUsersToProcess(hourUtc) {
   const { data, error } = await sb
     .from('a_user_settings')
     .select(`
-      news_country, news_categories, news_page_size,
+      news_country, news_categories, news_keywords, news_page_size,
       llm_provider, llm_model,
       tts_provider, tts_voice, tts_speed,
       briefing_language, briefing_target_secs, custom_prompt,
@@ -93,7 +93,7 @@ export async function getBriefingHistory(userId, limit = 30) {
 export async function updateUserSettings(userId, patch) {
   // 허용된 필드만 통과
   const allowed = [
-    'news_country', 'news_categories', 'news_page_size',
+    'news_country', 'news_categories', 'news_keywords', 'news_page_size',
     'llm_provider', 'llm_model',
     'tts_provider', 'tts_voice', 'tts_speed',
     'briefing_language', 'briefing_target_secs', 'custom_prompt',
@@ -144,6 +144,7 @@ export function settingsToOverride(s) {
     news: {
       country:    s.news_country,
       categories: s.news_categories,
+      keywords:   s.news_keywords,
       pageSize:   s.news_page_size,
     },
     llm: {

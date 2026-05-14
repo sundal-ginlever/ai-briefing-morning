@@ -45,6 +45,8 @@ function buildSystemPrompt(language, targetSeconds, customPrompt) {
 Write a spoken audio briefing script in ${language}.
 Target length: ${targetSeconds} seconds when read aloud (~${wordCount} words).
 Style: warm, clear, conversational — like NPR morning edition.
+Pacing: Use frequent commas, periods, and em-dashes (—) to create natural pauses and a comfortable listening pace. Do not rush.
+IMPORTANT: You MUST insert the exact text "[PAUSE]" on its own line between every news story to allow for a 1-second audio break.
 Do NOT include stage directions, sound effects, or timestamps.
 Output the script text only, nothing else.`
 
@@ -58,9 +60,9 @@ ${customPrompt}`
 
 function buildUserPrompt(articles) {
   const lines = articles.map((a, i) =>
-    `${i + 1}. [${a.source}] ${a.title}\n   ${a.description}`
+    `Story ${i + 1}:\nTitle: ${a.title}\nSource: ${a.source}\nDescription: ${a.description}`
   ).join('\n\n')
-  return `Here are today's top news stories. Write the briefing script:\n\n${lines}`
+  return `Here are today's top news stories. Write the briefing script. Remember to insert [PAUSE] between stories:\n\n${lines}`
 }
 
 async function callOpenAI(model, systemPrompt, userPrompt) {

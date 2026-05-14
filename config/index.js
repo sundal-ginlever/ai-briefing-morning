@@ -35,6 +35,7 @@ export const config = {
     apiKey:     required('NEWS_API_KEY'),
     country:    optional('NEWS_COUNTRY',    'us'),
     categories: optional('NEWS_CATEGORIES', 'general').split(',').map(c => c.trim()),
+    keywords:   optional('NEWS_KEYWORDS', '').split(',').map(k => k.trim()).filter(Boolean),
     pageSize:   parseInt(optional('NEWS_PAGE_SIZE', '3'), 10),
   },
   llm: {
@@ -48,7 +49,7 @@ export const config = {
     openai:  { apiKey: optional('OPENAI_API_KEY') },
     google:  { apiKey: optional('GOOGLE_API_KEY', process.env.GEMINI_API_KEY) },
     voice:    optional('TTS_VOICE', 'coral'),
-    speed:    parseFloat(optional('TTS_SPEED', '1.0')),
+    speed:    parseFloat(optional('TTS_SPEED', '0.95')),
   },
   supabase: {
     url:        optional('SUPABASE_URL'),

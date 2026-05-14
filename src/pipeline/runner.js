@@ -20,6 +20,7 @@ import {
   getUserSettings,
   settingsToOverride,
 } from '../api/users.js'
+import { fetchArticlesFromPool, markArticlesAsUsed } from '../collector/pool-reader.js'
 import { config } from '../../config/index.js'
 
 const isDryRun   = process.argv.includes('--dry-run')
@@ -110,12 +111,23 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
   const llmOpts = override.llm ?? {}
   const ttsOpts = override.tts ?? {}
 
-  // Step 1 — 뉴스 수집 (캐시 사용 여부에 따라 분기)
+  // Step 1 — 뉴스 수집 (pool 우선, 폴백: 실시간 호출)
   logger.info(`${userTag} [1/6] Fetching news`)
-  const articles = useCache
-    ? await fetchNewsWithCache(newsOpts)
-    : await fetchNews(newsOpts)
-  if (articles.length === 0) throw new Error('No articles returned from NewsAPI')
+  let articles
+  try {
+    articles = await fetchArticlesFromPool(newsOpts.keywords, newsOpts.pageSize ?? 5)
+    if (articles.length > 0) {
+      logger.info(`${userTag} Using ${articles.length} articles from news pool`)
+    } else {
+      throw new Error('Pool empty')
+    }
+  } catch (e) {
+    logger.info(`${userTag} Pool unavailable (${e.message}), falling back to live fetch`)
+    articles = useCache
+      ? await fetchNewsWithCache(newsOpts)
+      : await fetchNews(newsOpts)
+  }
+  if (articles.length === 0) throw new Error('No articles available')
   articles.forEach((a, i) => logger.info(`  ${i+1}. ${a.title}`))
 
   if (isDryRun) {
@@ -172,6 +184,14 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
     llmProvider: override.llm?.provider ?? config.llm.provider,
     ttsProvider: override.tts?.provider ?? config.tts.provider,
     durationMs })
+
+  // Mark pool articles as used
+  try {
+    const poolUrls = articles.map(a => a.url).filter(Boolean)
+    if (poolUrls.length > 0) await markArticlesAsUsed(poolUrls)
+  } catch (e) {
+    logger.warn(`${userTag} Failed to mark pool articles: ${e.message}`)
+  }
 
   logger.info(`${userTag} Done in ${(durationMs/1000).toFixed(1)}s`)
   return { userId, articles, script, audioUrl, durationMs }

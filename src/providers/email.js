@@ -40,6 +40,13 @@ export async function sendBriefingEmail({ audioUrl, script, headlines, date, to 
     subject: `☀️ Morning Briefing — ${date}`,
     text,
     html,
+    attachments: [
+      {
+        filename: `briefing-${date.replace(/[^a-zA-Z0-9]/g, '-')}.md`,
+        content: `# Morning Briefing — ${date}\n\n${headlines.map((h, i) => `## ${i+1}. ${h}`).join('\n\n')}\n\n---\n\n## Full Script\n\n${script}`,
+        contentType: 'text/markdown',
+      },
+    ],
   })
 
   logger.info(`[email] sent messageId=${info.messageId}`)

@@ -34,9 +34,9 @@ export const config = {
   news: {
     apiKey:     required('NEWS_API_KEY'),
     country:    optional('NEWS_COUNTRY',    'us'),
-    categories: optional('NEWS_CATEGORIES', 'general').split(',').map(c => c.trim()),
+    categories: optional('NEWS_CATEGORIES', 'general,technology').split(',').map(c => c.trim()),
     keywords:   optional('NEWS_KEYWORDS', '').split(',').map(k => k.trim()).filter(Boolean),
-    pageSize:   parseInt(optional('NEWS_PAGE_SIZE', '3'), 10),
+    pageSize:   parseInt(optional('NEWS_PAGE_SIZE', '5'), 10),
   },
   llm: {
     provider: llmProvider,
@@ -74,7 +74,7 @@ export const config = {
   },
   briefing: {
     language:      optional('BRIEFING_LANGUAGE',       'English'),
-    targetSeconds: parseInt(optional('BRIEFING_TARGET_SECONDS', '60'), 10),
+    targetSeconds: parseInt(optional('BRIEFING_TARGET_SECONDS', '150'), 10),
   },
   server: {
     adminEmails: optional('ADMIN_EMAILS', '').split(',').map(e => e.trim()).filter(Boolean),

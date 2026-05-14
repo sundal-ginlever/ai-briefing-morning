@@ -48,6 +48,8 @@ jobs:
           NEWS_API_KEY:          ${{ secrets.NEWS_API_KEY }}
           SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NEWS_COUNTRY:          ${{ vars.NEWS_COUNTRY || 'us' }}
+          NEWS_CATEGORIES:       ${{ vars.NEWS_CATEGORIES || 'general,technology' }}
         run: node src/collector/collect.js
 
       - name: Run pipeline

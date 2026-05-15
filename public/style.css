@@ -117,3 +117,30 @@
   .stat-label{ font-size: 13px; color: var(--muted); margin-top: 4px }
 
   .hidden { display: none !important }
+
+  /* ── Mobile Layout ── */
+  .mobile-header { display: none; background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 20px; align-items: center; justify-content: space-between; }
+  .mobile-header .logo { padding: 0; margin: 0; }
+  .menu-btn { background: none; border: none; color: var(--text); font-size: 22px; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; }
+  .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .sidebar-backdrop.show { display: block; opacity: 1; pointer-events: auto; }
+
+  @media (max-width: 768px) {
+    .shell { flex-direction: column; }
+    .mobile-header { display: flex; }
+    .desktop-logo { display: none; }
+    
+    .sidebar {
+      position: fixed; top: 0; bottom: 0; left: 0;
+      width: 250px; z-index: 20;
+      transform: translateX(-100%); transition: transform 0.3s ease;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+    }
+    .sidebar.show { transform: translateX(0); }
+    .sidebar-backdrop.show { display: block; }
+    
+    .main { padding: 20px; max-width: 100%; }
+    .row { grid-template-columns: 1fr; gap: 12px; }
+    .stats { grid-template-columns: 1fr; gap: 12px; }
+    .card { padding: 16px; }
+  }

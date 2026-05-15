@@ -53,8 +53,14 @@
 
 <!-- App Shell -->
 <div class="shell" id="app" style="display:none">
-  <aside class="sidebar">
+  <div class="mobile-header">
     <div class="logo">☀️ <span>Briefing</span></div>
+    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+  </div>
+  <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="logo desktop-logo">☀️ <span>Briefing</span></div>
     <nav>
       <a href="#" class="active" onclick="showTab('home',this)">🏠 홈</a>
       <a href="#" onclick="showTab('settings',this)">⚙️ 설정</a>

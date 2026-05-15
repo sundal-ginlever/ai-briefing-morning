@@ -112,7 +112,12 @@ async function api(method, path, body) {
   return res.json()
 }
 
-// ── Tabs ───────────────────────────────────────────────────────────────────
+// ── Tabs & Sidebar ───────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('show')
+  document.getElementById('sidebar-backdrop').classList.toggle('show')
+}
+
 function showTab(name, el) {
   document.querySelectorAll('[id^=tab-]').forEach(t => t.classList.add('hidden'))
   document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'))
@@ -120,6 +125,10 @@ function showTab(name, el) {
   el.classList.add('active')
   if (name === 'settings') loadSettings()
   if (name === 'history')  loadHistory()
+  
+  // 모바일에서 탭 선택 시 사이드바 닫기
+  document.getElementById('sidebar')?.classList.remove('show')
+  document.getElementById('sidebar-backdrop')?.classList.remove('show')
 }
 
 // ── Home ───────────────────────────────────────────────────────────────────

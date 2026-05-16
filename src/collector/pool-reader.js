@@ -18,24 +18,53 @@ export async function fetchArticlesFromPool(keywords = [], limit = 5) {
   if (!sb) throw new Error('Supabase not configured')
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  let finalArticles = []
 
-  let query = sb
-    .from('a_news_pool')
-    .select('title, description, source_name, url, published_at')
-    .eq('used_in_briefing', false)
-    .gte('collected_at', since)
-    .order('published_at', { ascending: false })
-    .limit(limit)
+  // 1) 키워드가 있을 경우 키워드 매칭 기사 먼저 검색
+  if (keywords.length > 0) {
+    const orConditions = keywords.flatMap(k => [
+      `title.ilike.%${k}%`,
+      `description.ilike.%${k}%`
+    ]).join(',')
 
-  // 키워드가 있을 경우 처리 (간단하게 구현)
-  // 실제로는 PostgREST에서 복잡한 OR 필터링이 필요할 수 있으나 여기서는 기본 조회 후 필터링하거나 그냥 둠.
-  
-  const { data, error } = await query
-  if (error) throw new Error(`Pool query failed: ${error.message}`)
+    const { data: kwData, error: kwError } = await sb
+      .from('a_news_pool')
+      .select('title, description, source_name, url, published_at')
+      .eq('used_in_briefing', false)
+      .gte('collected_at', since)
+      .or(orConditions)
+      .order('published_at', { ascending: false })
+      .limit(limit)
 
-  logger.info(`[pool-reader] Found ${data?.length ?? 0} articles in pool`)
+    if (kwError) logger.warn(`[pool-reader] Keyword search failed: ${kwError.message}`)
+    else finalArticles = kwData || []
+  }
 
-  return (data ?? []).map(a => ({
+  // 2) 기사가 부족하면 최신 기사로 채움 (폴백)
+  if (finalArticles.length < limit) {
+    const remaining = limit - finalArticles.length
+    const excludeUrls = finalArticles.map(a => a.url)
+
+    let query = sb
+      .from('a_news_pool')
+      .select('title, description, source_name, url, published_at')
+      .eq('used_in_briefing', false)
+      .gte('collected_at', since)
+      .order('published_at', { ascending: false })
+      .limit(remaining)
+
+    if (excludeUrls.length > 0) {
+      query = query.not('url', 'in', `(${excludeUrls.join(',')})`)
+    }
+
+    const { data: genData, error: genError } = await query
+    if (genError) logger.warn(`[pool-reader] Fallback search failed: ${genError.message}`)
+    else finalArticles.push(...(genData || []))
+  }
+
+  logger.info(`[pool-reader] Found ${finalArticles.length} articles (Keywords: ${keywords.length > 0})`)
+
+  return finalArticles.map(a => ({
     title:       a.title,
     description: a.description || '',
     source:      a.source_name,

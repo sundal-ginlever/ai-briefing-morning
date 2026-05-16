@@ -205,6 +205,7 @@ async function loadSettings() {
   const s = me.settings
   document.getElementById('s-country').value    = s.news_country
   document.getElementById('s-categories').value = s.news_categories?.join(',') ?? ''
+  document.getElementById('s-keywords').value   = s.news_keywords?.join(',') ?? ''
   document.getElementById('s-pagesize').value   = s.news_page_size
   document.getElementById('s-llm').value        = s.llm_provider
   document.getElementById('s-model').value      = s.llm_model
@@ -223,9 +224,11 @@ async function saveSettings() {
   btn.disabled = true
   btn.textContent = '저장 중...'
   const cats = document.getElementById('s-categories').value.split(',').map(c=>c.trim()).filter(Boolean)
+  const keys = document.getElementById('s-keywords').value.split(',').map(k=>k.trim()).filter(Boolean)
   const patch = {
     news_country:          document.getElementById('s-country').value,
     news_categories:       cats,
+    news_keywords:         keys,
     news_page_size:        parseInt(document.getElementById('s-pagesize').value),
     llm_provider:          document.getElementById('s-llm').value,
     llm_model:             document.getElementById('s-model').value,

@@ -20,9 +20,11 @@ export async function fetchArticlesFromPool(keywords = [], limit = 5) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   let finalArticles = []
 
+  const safeKeywords = keywords || []
+
   // 1) 키워드가 있을 경우 키워드 매칭 기사 먼저 검색
-  if (keywords.length > 0) {
-    const orConditions = keywords.flatMap(k => [
+  if (safeKeywords.length > 0) {
+    const orConditions = safeKeywords.flatMap(k => [
       `title.ilike.%${k}%`,
       `description.ilike.%${k}%`
     ]).join(',')

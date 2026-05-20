@@ -200,7 +200,7 @@ async function manualRun() {
 
 // ── Settings ───────────────────────────────────────────────────────────────
 async function loadSettings() {
-  const me = await api('GET', '/api/me')
+  const me = await api('GET', `/api/me?_t=${Date.now()}`)
   if (!me) return
   const s = me.settings
   document.getElementById('s-country').value    = s.news_country

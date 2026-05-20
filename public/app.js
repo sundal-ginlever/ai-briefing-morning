@@ -247,7 +247,8 @@ async function saveSettings() {
   if (res) {
     toast('설정이 저장되었습니다', 'ok')
   } else {
-    toast('설정 저장에 실패했습니다. 다시 시도해주세요.', 'fail')
+    // api() helper already shows the backend error toast, so we don't need a generic one here.
+    // However, if we want to be sure, we can just log it or rely on api() helper's toast.
   }
 }
 

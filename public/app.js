@@ -244,7 +244,11 @@ async function saveSettings() {
   const res = await api('PUT', '/api/me/settings', patch)
   btn.disabled = false
   btn.textContent = '변경사항 저장'
-  if (res) toast('설정이 저장되었습니다', 'ok')
+  if (res) {
+    toast('설정이 저장되었습니다', 'ok')
+  } else {
+    toast('설정 저장에 실패했습니다. 다시 시도해주세요.', 'fail')
+  }
 }
 
 // ── History ────────────────────────────────────────────────────────────────

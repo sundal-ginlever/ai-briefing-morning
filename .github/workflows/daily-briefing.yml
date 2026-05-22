@@ -12,7 +12,7 @@ name: Morning Briefing Scheduler
 
 on:
   schedule:
-    - cron: '30 * * * *'   # 매시 30분에 실행 (대시보드에서 06:00 선택 시 06:30에 발송)
+    - cron: '30 */2 * * *'   # 2시간마다 30분에 실행 (NewsAPI 한도 방어)
 
   workflow_dispatch:
     inputs:

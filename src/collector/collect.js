@@ -17,20 +17,30 @@ async function main() {
   const startTime = Date.now()
   logger.info('[collector] Starting news collection...')
 
+  // NewsAPI는 하루 한도(100회) 방어를 위해 짝수 시간(UTC)에만 수집
+  const currentHour = new Date().getUTCHours()
+  const shouldRunNewsAPI = currentHour % 2 === 0
+  
+  const tasks = [ collectFromRSS() ]
+  if (shouldRunNewsAPI) {
+    tasks.push(
+      collectFromNewsAPI(config.news.apiKey, {
+        country: config.news.country,
+        categories: config.news.categories,
+        pageSize: 10,
+      })
+    )
+  } else {
+    logger.info('[collector] Skipping NewsAPI on odd hours to conserve rate limits')
+  }
+
   // 1) 모든 소스에서 병렬 수집
-  const results = await Promise.allSettled([
-    collectFromNewsAPI(config.news.apiKey, {
-      country: config.news.country,
-      categories: config.news.categories,
-      pageSize: 10,
-    }),
-    collectFromRSS(),
-  ])
+  const results = await Promise.allSettled(tasks)
 
   // 2) 결과 합산
   const allArticles = []
   results.forEach((r, i) => {
-    const sourceName = ['NewsAPI', 'RSS'][i]
+    const sourceName = shouldRunNewsAPI ? (i === 0 ? 'RSS' : 'NewsAPI') : 'RSS'
     if (r.status === 'fulfilled') {
       logger.info(`[collector] ${sourceName}: ${r.value.length} articles`)
       allArticles.push(...r.value)

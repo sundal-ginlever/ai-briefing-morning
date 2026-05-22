@@ -8,11 +8,9 @@ import { logger }      from '../utils/logger.js'
 // ─── 조회 ─────────────────────────────────────────────────────────────────────
 
 /**
- * 스케줄이 활성화된 사용자 중, 현재 시간(UTC) 이하로 설정된 모든 사용자를 가져옴.
- * (GitHub Actions의 지연 실행에 대비하기 위함)
- * @param {number} hourUtc - 현재 UTC 시간 (0-23)
+ * 스케줄이 활성화된 사용자 중, 실행 조건이 된 사용자를 필터링하기 위해 모두 가져옴.
  */
-export async function getActiveUsersToProcess(hourUtc) {
+export async function getActiveUsersToProcess() {
   const sb = getSupabase()
   const { data, error } = await sb
     .from('a_user_settings')
@@ -26,7 +24,6 @@ export async function getActiveUsersToProcess(hourUtc) {
       a_user_profiles!inner (id, email, display_name, is_active)
     `)
     .eq('schedule_enabled', true)
-    .lte('schedule_hour_utc', hourUtc)  // 현재 시간 이하인 모든 유저
     .eq('a_user_profiles.is_active', true)
 
   if (error) throw new Error(`getActiveUsersToProcess failed: ${error.message}`)

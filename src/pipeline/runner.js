@@ -115,7 +115,7 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
   logger.info(`${userTag} [1/6] Fetching news`)
   let articles
   try {
-    articles = await fetchArticlesFromPool(newsOpts.keywords, newsOpts.pageSize ?? 5)
+    articles = await fetchArticlesFromPool(userId, newsOpts.keywords, newsOpts.pageSize ?? 5)
     if (articles.length > 0) {
       logger.info(`${userTag} Using ${articles.length} articles from news pool`)
     } else {
@@ -178,12 +178,22 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
   await sendBriefingEmail({ audioUrl, script, headlines: articles.map(a => a.title), date: dateLabel, to: emailTo })
 
   // Step 6
-  logger.info(`${userTag} [6/6] Saving log`)
+  logger.info(`${userTag} [6/7] Saving log`)
   const durationMs = Date.now() - startTime
   await saveBriefingLog({ userId, date, script, audioUrl, articles,
     llmProvider: override.llm?.provider ?? config.llm.provider,
     ttsProvider: override.tts?.provider ?? config.tts.provider,
     durationMs })
+
+  // Step 7: Google Drive 연동 (옵시디언용 MD 아카이빙)
+  logger.info(`${userTag} [7/7] Uploading MD to Google Drive`)
+  const mdFilename = userId ? `${userId.slice(0,8)}-${date}.md` : `${date}.md`
+  try {
+    const { uploadMarkdownToDrive } = await import('../providers/gdrive.js')
+    await uploadMarkdownToDrive(mdFilename, script)
+  } catch (err) {
+    logger.warn(`${userTag} Failed to upload to Google Drive: ${err.message}`)
+  }
 
   // Mark pool articles as used
   try {
@@ -241,30 +251,37 @@ export async function runScheduledUsers() {
 
   let candidates
   try {
-    // 1) 현재 시간(hourUtc)보다 일찍 받기로 설정된 모든 활성 유저 조회
-    candidates = await getActiveUsersToProcess(hourUtc)
+    candidates = await getActiveUsersToProcess()
   } catch (err) {
     logger.error(`[scheduler] Failed to get candidates from DB: ${err.message}`)
     return
   }
 
   if (!candidates || candidates.length === 0) {
-    logger.info(`[scheduler] No users scheduled up to hour=${hourUtc}`)
+    logger.info(`[scheduler] No active scheduled users found.`)
     return
   }
 
-  // 2) 당일 이미 브리핑을 받은 유저 필터링 (중복 발송 방지)
+  // 2) 조건 필터링: (1) 지연 허용 범위 내인가? (2) 오늘 이미 받았는가?
   const usersToRun = []
   for (const row of candidates) {
     const userId = row.a_user_profiles.id
     const userTz = row.timezone || 'Asia/Seoul'
     const date   = todaySlug(userTz) // 사용자 시간대 기준 날짜 계산
-
-    const alreadyDone = await hasLogForDate(userId, date)
-    if (!alreadyDone) {
-      usersToRun.push({ ...row, calculatedDate: date })
+    
+    // 0~3 시간 이내로 늦은 경우 허용 (예: 스케줄이 23시이고 현재가 1시이면 diff=2)
+    const diffHours = (hourUtc - row.schedule_hour_utc + 24) % 24
+    
+    if (diffHours >= 0 && diffHours <= 3) {
+      const alreadyDone = await hasLogForDate(userId, date)
+      if (!alreadyDone) {
+        usersToRun.push({ ...row, calculatedDate: date })
+      } else {
+        logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — already processed for ${date} (${userTz})`)
+      }
     } else {
-      logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — already processed for ${date} (${userTz})`)
+      // 3시간 이상 차이나면 실행할 시간이 아님
+      logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — schedule=${row.schedule_hour_utc} UTC, now=${hourUtc} UTC (diff=${diffHours}h)`)
     }
   }
 

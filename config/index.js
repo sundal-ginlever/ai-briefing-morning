@@ -15,7 +15,7 @@ function optional(key, defaultValue = '') {
 }
 
 const VALID_LLM_PROVIDERS = ['openai', 'gemini', 'ollama']
-const VALID_TTS_PROVIDERS = ['openai', 'none']
+const VALID_TTS_PROVIDERS = ['openai', 'google', 'none']
 const VALID_STORAGE       = ['supabase', 'local']
 const VALID_EMAIL         = ['smtp', 'none']
 

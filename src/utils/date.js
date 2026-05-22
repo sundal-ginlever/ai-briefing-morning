@@ -22,12 +22,21 @@ export function todaySlug(timezone = 'UTC') {
 }
 
 /**
- * Returns a human-readable date string like "April 24, 2025".
+ * Returns a human-readable date string like "April 24, 2025" in the given timezone.
  */
-export function todayReadable() {
-  return new Date().toLocaleDateString('en-US', {
-    year:  'numeric',
-    month: 'long',
-    day:   'numeric',
-  })
+export function todayReadable(timezone = 'UTC') {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year:  'numeric',
+      month: 'long',
+      day:   'numeric',
+    }).format(new Date())
+  } catch (err) {
+    return new Date().toLocaleDateString('en-US', {
+      year:  'numeric',
+      month: 'long',
+      day:   'numeric',
+    })
+  }
 }

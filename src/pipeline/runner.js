@@ -97,8 +97,8 @@ function clearExpiredNewsCache() {
 
 export async function runPipeline({ userId = null, override = {}, useCache = false, forceDate = null } = {}) {
   const startTime = Date.now()
-  const date      = forceDate || todaySlug(override.timezone || 'UTC')
-  const dateLabel = todayReadable()
+  const date      = forceDate || todaySlug(override.schedule?.timezone || 'UTC')
+  const dateLabel = todayReadable(override.schedule?.timezone || 'UTC')
   const userTag   = userId ? `[user:${userId.slice(0,8)}]` : '[default]'
 
   logger.info(`=== Briefing Pipeline ${userTag} === ${dateLabel} ${isDryRun ? '[DRY RUN]' : ''}`)

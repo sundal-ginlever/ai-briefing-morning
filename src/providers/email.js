@@ -34,8 +34,9 @@ export async function sendBriefingEmail({ audioUrl, script, headlines, date, to 
   const html = buildEmailHTML({ audioUrl, script, headlines, date })
   const text = buildEmailText({ audioUrl, script, headlines, date })
 
+  const fromAddress = config.email.from || config.email.smtp.user
   const info = await transporter.sendMail({
-    from:    `"Morning Briefing" <${config.email.from}>`,
+    from:    `"Morning Briefing" <${fromAddress}>`,
     to:      to ?? config.email.to,
     subject: `☀️ Morning Briefing — ${date}`,
     text,

@@ -215,6 +215,8 @@ async function loadSettings() {
   document.getElementById('s-lang').value       = s.briefing_language
   document.getElementById('s-secs').value       = s.briefing_target_secs
   document.getElementById('s-hour').value       = s.schedule_hour_utc
+  document.getElementById('s-timezone').value   = s.timezone || 'Asia/Seoul'
+  document.getElementById('s-prompt').value     = s.custom_prompt ?? ''
   document.getElementById('s-enabled').checked  = s.schedule_enabled
   document.getElementById('s-email').value      = s.delivery_email ?? ''
 }
@@ -238,6 +240,8 @@ async function saveSettings() {
     briefing_language:     document.getElementById('s-lang').value,
     briefing_target_secs:  parseInt(document.getElementById('s-secs').value),
     schedule_hour_utc:     parseInt(document.getElementById('s-hour').value),
+    timezone:              document.getElementById('s-timezone').value,
+    custom_prompt:         document.getElementById('s-prompt').value || null,
     schedule_enabled:      document.getElementById('s-enabled').checked,
     delivery_email:        document.getElementById('s-email').value || null,
   }

@@ -175,6 +175,10 @@
             <input id="s-speed" type="number" step="0.1" min="0.5" max="2.0">
           </div>
         </div>
+        <div style="margin-top: 14px;">
+          <label>AI 앵커 커스텀 프롬프트 (Premium)</label>
+          <textarea id="s-prompt" rows="3" placeholder="예: 반도체 및 인공지능 관련 뉴스를 더 비중 있게 설명해줘. 격식 있고 신뢰감 있는 앵커 톤으로 진행해줘." style="width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; transition: border-color .15s; resize: vertical;"></textarea>
+        </div>
       </div>
 
       <div class="card">
@@ -189,33 +193,47 @@
             <input id="s-secs" type="number" min="30" max="300">
           </div>
         </div>
-        <label>스케줄 시각 (UTC 기준)</label>
-        <select id="s-hour">
-          <option value="0">00:00 UTC = 09:00 KST</option>
-          <option value="1">01:00 UTC = 10:00 KST</option>
-          <option value="2">02:00 UTC = 11:00 KST</option>
-          <option value="3">03:00 UTC = 12:00 KST</option>
-          <option value="4">04:00 UTC = 13:00 KST</option>
-          <option value="5">05:00 UTC = 14:00 KST</option>
-          <option value="6">06:00 UTC = 15:00 KST</option>
-          <option value="7">07:00 UTC = 16:00 KST</option>
-          <option value="8">08:00 UTC = 17:00 KST</option>
-          <option value="9">09:00 UTC = 18:00 KST</option>
-          <option value="10">10:00 UTC = 19:00 KST</option>
-          <option value="11">11:00 UTC = 20:00 KST</option>
-          <option value="12">12:00 UTC = 21:00 KST</option>
-          <option value="13">13:00 UTC = 22:00 KST</option>
-          <option value="14">14:00 UTC = 23:00 KST</option>
-          <option value="15">15:00 UTC = 00:00 KST</option>
-          <option value="16">16:00 UTC = 01:00 KST</option>
-          <option value="17">17:00 UTC = 02:00 KST</option>
-          <option value="18">18:00 UTC = 03:00 KST</option>
-          <option value="19">19:00 UTC = 04:00 KST</option>
-          <option value="20">20:00 UTC = 05:00 KST</option>
-          <option value="21">21:00 UTC = 06:00 KST</option>
-          <option value="22">22:00 UTC = 07:00 KST</option>
-          <option value="23">23:00 UTC = 08:00 KST</option>
-        </select>
+        <div class="row">
+          <div>
+            <label>스케줄 시각 (UTC 기준)</label>
+            <select id="s-hour">
+              <option value="0">00:00 UTC = 09:00 KST</option>
+              <option value="1">01:00 UTC = 10:00 KST</option>
+              <option value="2">02:00 UTC = 11:00 KST</option>
+              <option value="3">03:00 UTC = 12:00 KST</option>
+              <option value="4">04:00 UTC = 13:00 KST</option>
+              <option value="5">05:00 UTC = 14:00 KST</option>
+              <option value="6">06:00 UTC = 15:00 KST</option>
+              <option value="7">07:00 UTC = 16:00 KST</option>
+              <option value="8">08:00 UTC = 17:00 KST</option>
+              <option value="9">09:00 UTC = 18:00 KST</option>
+              <option value="10">10:00 UTC = 19:00 KST</option>
+              <option value="11">11:00 UTC = 20:00 KST</option>
+              <option value="12">12:00 UTC = 21:00 KST</option>
+              <option value="13">13:00 UTC = 22:00 KST</option>
+              <option value="14">14:00 UTC = 23:00 KST</option>
+              <option value="15">15:00 UTC = 00:00 KST</option>
+              <option value="16">16:00 UTC = 01:00 KST</option>
+              <option value="17">17:00 UTC = 02:00 KST</option>
+              <option value="18">18:00 UTC = 03:00 KST</option>
+              <option value="19">19:00 UTC = 04:00 KST</option>
+              <option value="20">20:00 UTC = 05:00 KST</option>
+              <option value="21">21:00 UTC = 06:00 KST</option>
+              <option value="22">22:00 UTC = 07:00 KST</option>
+              <option value="23">23:00 UTC = 08:00 KST</option>
+            </select>
+          </div>
+          <div>
+            <label>사용자 타임존 (Timezone)</label>
+            <select id="s-timezone">
+              <option value="Asia/Seoul">Asia/Seoul (한국 표준시 - KST)</option>
+              <option value="UTC">UTC (협정 세계시)</option>
+              <option value="America/New_York">America/New_York (미국 동부)</option>
+              <option value="Europe/London">Europe/London (런던)</option>
+              <option value="Asia/Tokyo">Asia/Tokyo (도쿄)</option>
+            </select>
+          </div>
+        </div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
           <input id="s-enabled" type="checkbox" style="width:auto;margin:0">
           <label style="margin:0">스케줄 활성화</label>

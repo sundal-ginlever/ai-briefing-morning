@@ -63,6 +63,8 @@ jobs:
           SMTP_USER:             ${{ secrets.SMTP_USER }}
           SMTP_PASS:             ${{ secrets.SMTP_PASS }}
           EMAIL_FROM:            ${{ secrets.EMAIL_FROM }}
+          GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
+          GDRIVE_FOLDER_ID:      ${{ secrets.GDRIVE_FOLDER_ID }}
 
           # ── 선택 Secrets ──────────────────────────────────────────────────
           GEMINI_API_KEY:        ${{ secrets.GEMINI_API_KEY }}

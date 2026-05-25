@@ -18,7 +18,7 @@ export async function getDriveClient() {
         client_email: creds.client_email,
         private_key: creds.private_key,
       },
-      scopes: ['https://www.googleapis.com/auth/drive.file'],
+      scopes: ['https://www.googleapis.com/auth/drive'],
     })
     drive = google.drive({ version: 'v3', auth })
     return drive

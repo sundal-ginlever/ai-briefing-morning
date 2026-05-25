@@ -185,14 +185,18 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
     ttsProvider: override.tts?.provider ?? config.tts.provider,
     durationMs })
 
-  // Step 7: Google Drive 연동 (옵시디언용 MD 아카이빙)
-  logger.info(`${userTag} [7/7] Uploading MD to Google Drive`)
+  // Step 7: GitHub 동기화를 위한 로컬 MD 저장 (옵시디언 연동용)
+  logger.info(`${userTag} [7/7] Saving MD locally for GitHub Sync`)
   const mdFilename = userId ? `${userId.slice(0,8)}-${date}.md` : `${date}.md`
   try {
-    const { uploadMarkdownToDrive } = await import('../providers/gdrive.js')
-    await uploadMarkdownToDrive(mdFilename, script)
+    const { writeFileSync, mkdirSync } = await import('fs')
+    const { join } = await import('path')
+    const outDir = join(process.cwd(), 'briefings')
+    mkdirSync(outDir, { recursive: true })
+    writeFileSync(join(outDir, mdFilename), script, 'utf8')
+    logger.info(`${userTag} Saved ${mdFilename} to briefings/`)
   } catch (err) {
-    logger.warn(`${userTag} Failed to upload to Google Drive: ${err.message}`)
+    logger.warn(`${userTag} Failed to save MD locally: ${err.message}`)
   }
 
   // Mark pool articles as used

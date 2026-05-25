@@ -29,6 +29,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -63,8 +65,6 @@ jobs:
           SMTP_USER:             ${{ secrets.SMTP_USER }}
           SMTP_PASS:             ${{ secrets.SMTP_PASS }}
           EMAIL_FROM:            ${{ secrets.EMAIL_FROM }}
-          GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
-          GDRIVE_FOLDER_ID:      ${{ secrets.GDRIVE_FOLDER_ID }}
 
           # ── 선택 Secrets ──────────────────────────────────────────────────
           GEMINI_API_KEY:        ${{ secrets.GEMINI_API_KEY }}
@@ -90,6 +90,18 @@ jobs:
             node src/pipeline/runner.js --user=${{ github.event.inputs.user_id }}
           else
             node src/pipeline/runner.js
+          fi
+
+      - name: Commit and push briefing
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add briefings/
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "docs(briefing): Add daily AI briefing [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
           fi
 
       - name: Annotate failure

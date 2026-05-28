@@ -156,13 +156,17 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
     logger.warn(`[tts] Failed to load silence_1s.mp3: ${e.message}`)
   }
 
+  const { cleanMp3Buffer } = await import('../utils/mp3.js')
+  const cleanedSilenceBuf = silenceBuf ? cleanMp3Buffer(silenceBuf) : null
+
   for (let i = 0; i < scriptChunks.length; i++) {
     logger.info(`${userTag} Synthesizing chunk ${i+1}/${scriptChunks.length}`)
     const buf = await synthesizeSpeech(scriptChunks[i], override)
     if (buf) {
-      audioBuffers.push(buf)
-      if (i < scriptChunks.length - 1 && silenceBuf) {
-        audioBuffers.push(silenceBuf)
+      const cleanedBuf = cleanMp3Buffer(buf)
+      audioBuffers.push(cleanedBuf)
+      if (i < scriptChunks.length - 1 && cleanedSilenceBuf) {
+        audioBuffers.push(cleanedSilenceBuf)
       }
     }
   }

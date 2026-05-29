@@ -13,7 +13,7 @@ async function getClient() {
 /**
  * news pool에서 최근 24시간 기사를 가져옴. (사용자별로 읽은 기사 제외)
  */
-export async function fetchArticlesFromPool(userId, keywords = [], limit = 5) {
+export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, override = {}) {
   const sb = await getClient()
   if (!sb) throw new Error('Supabase not configured')
 
@@ -43,7 +43,7 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5) {
     }
   }
 
-  // 1) 키워드가 있을 경우 키워드 매칭 기사 먼저 검색
+  // 1) 키워드가 있을 경우 키워드 매칭 기사 먼저 검색 (우선순위 1단계)
   if (safeKeywords.length > 0) {
     const orConditions = safeKeywords.flatMap(k => [
       `title.ilike.%${k}%`,
@@ -68,36 +68,65 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5) {
     else finalArticles = kwData || []
   }
 
-  // 2) 기사가 부족하면 최신 기사로 채움 (폴백)
+  // 2) 기사가 부족하면 AI 기반의 최정예 핫이슈 뉴스로 채움 (우선순위 2단계 - AI 필터)
   if (finalArticles.length < limit) {
     const remaining = limit - finalArticles.length
     const excludeUrls = finalArticles.map(a => a.url)
+    const allExclude = [...usedUrls, ...excludeUrls]
 
+    // 인기도 엄선을 위해 5배수(기본 25개)의 최신 기사 후보군을 넉넉히 가져옵니다
+    const candidateLimit = 25
     let query = sb
       .from('a_news_pool')
       .select('title, description, source_name, url, published_at')
       .gte('collected_at', since)
       .order('published_at', { ascending: false })
-      .limit(remaining)
+      .limit(candidateLimit)
 
-    const allExclude = [...usedUrls, ...excludeUrls]
     if (allExclude.length > 0) {
       query = query.not('url', 'in', allExclude)
     }
 
-    const { data: genData, error: genError } = await query
-    if (genError) logger.warn(`[pool-reader] Fallback search failed: ${genError.message}`)
-    else finalArticles.push(...(genData || []))
+    const { data: candidates, error: genError } = await query
+    if (genError) {
+      logger.warn(`[pool-reader] Fallback candidate search failed: ${genError.message}`)
+    } else if (candidates && candidates.length > 0) {
+      logger.info(`[pool-reader] Fetched ${candidates.length} candidates. Selecting top ${remaining} via AI...`)
+      
+      const normalizedCandidates = candidates.map(a => ({
+        title:       a.title,
+        description: a.description || '',
+        source:      a.source_name,
+        url:         a.url,
+        publishedAt: a.published_at,
+      }))
+
+      try {
+        const { filterTopArticles } = await import('../providers/llm.js')
+        const hotArticles = await filterTopArticles(normalizedCandidates, remaining, override)
+        
+        finalArticles.push(...hotArticles.map(a => ({
+          title:       a.title,
+          description: a.description,
+          source_name: a.source,
+          url:         a.url,
+          published_at: a.publishedAt,
+        })))
+      } catch (err) {
+        logger.warn(`[pool-reader] AI Curation failed: ${err.message}. Falling back to standard slicing.`)
+        finalArticles.push(...candidates.slice(0, remaining))
+      }
+    }
   }
 
-  logger.info(`[pool-reader] Found ${finalArticles.length} articles (Keywords: ${keywords.length > 0})`)
+  logger.info(`[pool-reader] Total ${finalArticles.length} articles selected (Keywords matched: ${finalArticles.length - (limit - safeKeywords.length)})`)
 
   return finalArticles.map(a => ({
     title:       a.title,
     description: a.description || '',
     source:      a.source_name,
     url:         a.url,
-    publishedAt: a.published_at,
+    publishedAt: a.published_at || a.published_at,
   }))
 }
 

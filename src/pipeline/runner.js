@@ -115,7 +115,7 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
   logger.info(`${userTag} [1/6] Fetching news`)
   let articles
   try {
-    articles = await fetchArticlesFromPool(userId, newsOpts.keywords, newsOpts.pageSize ?? 5)
+    articles = await fetchArticlesFromPool(userId, newsOpts.keywords, newsOpts.pageSize ?? 5, override)
     if (articles.length > 0) {
       logger.info(`${userTag} Using ${articles.length} articles from news pool`)
     } else {

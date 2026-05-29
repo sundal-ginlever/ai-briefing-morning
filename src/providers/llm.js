@@ -116,3 +116,85 @@ async function callOllama(model, systemPrompt, userPrompt) {
   logger.info(`[llm:ollama] model=${model} ${script.length} chars`)
   return script
 }
+
+/**
+ * Filter and select the top count articles from candidate list using the Gemini model.
+ * 
+ * @param {Array} articles - Array of article candidates
+ * @param {number} count - Number of articles to select
+ * @param {object} override - Setting overrides
+ * @returns {Promise<Array>} Selected articles
+ */
+export async function filterTopArticles(articles, count = 5, override = {}) {
+  if (!articles || articles.length === 0) return [];
+  if (articles.length <= count) {
+    logger.info(`[llm-filter] Pool size (${articles.length}) <= target count (${count}), skipping AI filter`);
+    return articles;
+  }
+
+  // As requested by the user, we explicitly enforce using the Gemini provider for this filtering task
+  // unless they are using Ollama, but Gemini is the default.
+  const provider = override.llm?.provider === 'ollama' ? 'ollama' : 'gemini';
+  const model = provider === 'gemini' 
+    ? (override.llm?.model || config.llm.gemini.model || 'gemini-2.5-flash')
+    : getModel(provider, override.llm?.model);
+
+  const systemPrompt = buildFilteringSystemPrompt(count);
+  const userPrompt   = buildFilteringUserPrompt(articles);
+
+  logger.info(`[llm-filter] Filtering ${articles.length} candidates down to ${count} using provider="${provider}" model="${model}"`);
+
+  const responseText = await withRetry(
+    () => dispatch(provider, model, systemPrompt, userPrompt),
+    { label: `llm-filter:${provider}`, maxAttempts: 3, baseDelayMs: 2000, retryIf: isRetryable }
+  );
+
+  try {
+    // Extract JSON array from the response (safeguard against markdown wrap or chat noise)
+    const match = responseText.match(/\[\s*(\d+\s*,\s*)*\d+\s*\]/);
+    if (match) {
+      const indexes = JSON.parse(match[0]);
+      logger.info(`[llm-filter] Selected indices: ${JSON.stringify(indexes)}`);
+      
+      const selected = indexes
+        .map(idx => articles[idx])
+        .filter(Boolean)
+        .slice(0, count);
+
+      if (selected.length > 0) {
+        return selected;
+      }
+    }
+    throw new Error(`Failed to parse indices from response: "${responseText}"`);
+  } catch (e) {
+    logger.warn(`[llm-filter] Curation failed: ${e.message}. Falling back to first ${count} candidates.`);
+    return articles.slice(0, count);
+  }
+}
+
+function buildFilteringSystemPrompt(count) {
+  return `You are a chief news editor at a major global news broadcasting network.
+Your task is to analyze a list of today's collected news stories and select the top ${count} most important, impactful, and trending news stories of the day.
+
+Evaluation Criteria:
+1. Impact: Prioritize major news stories (geopolitical shifts, macroeconomic updates, major tech/AI breakthroughs, global events) over minor interest pieces (individual product reviews, tutorials, local news, small package releases).
+2. Trendiness: Select stories that represent hot topics or major discussions of the day.
+3. Diversity: Ensure the selected stories cover a variety of topics, rather than selecting multiple articles about the exact same event, unless they are all critical.
+
+You MUST respond ONLY with a raw JSON array of the 0-based indices of the selected ${count} articles, ordered by importance (most important first).
+Example Output: [2, 5, 0, 8, 11]
+
+Do NOT include any markdown formatting (like \`\`\`json), greetings, explanations, or introductory text. Just output the raw JSON array.`;
+}
+
+function buildFilteringUserPrompt(articles) {
+  const lines = articles.map((a, i) =>
+    `[Index ${i}]
+Title: ${a.title}
+Source: ${a.source || 'Unknown'}
+Description: ${a.description || '(No description)'}
+Published At: ${a.publishedAt || 'Unknown'}`
+  ).join('\n\n');
+  
+  return `Here are today's news candidates. Select the top 5 most important/trending stories and return their indices in JSON format:\n\n${lines}`;
+}

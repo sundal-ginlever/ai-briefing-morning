@@ -168,38 +168,71 @@ async function handleGetFeed(req, res, url) {
   const userId = match[1]
 
   try {
-    const history = await getBriefingHistory(userId, 10)
+    const history = await getBriefingHistory(userId, 15) // Get latest 15 episodes (about 2 weeks of briefings)
     const baseUrl = `https://${req.headers.host}`
-    
-    // RSS XML 구성
-    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`
-    xml += `<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">\n`
-    xml += `<channel>\n`
-    xml += `  <title>Morning Briefing for ${userId.slice(0,8)}</title>\n`
-    xml += `  <link>${baseUrl}</link>\n`
-    xml += `  <description>Your personalized morning news briefing.</description>\n`
-    xml += `  <language>en-us</language>\n`
+    const sb = getSupabase()
 
-    for (const log of history) {
+    // Dynamically and in parallel resign Supabase audio URLs to ensure they never expire!
+    const historyWithFreshUrls = await Promise.all(
+      history.map(async (log) => {
+        if (!log.audio_url) return log
+        try {
+          // Extract filename from stored signed URL
+          const filename = log.audio_url.split('/').pop().split('?')[0]
+          const bucket = config.storage?.bucket || 'ai-briefing-audio'
+          const { data, error } = await sb.storage
+            .from(bucket)
+            .createSignedUrl(filename, 60 * 60 * 24 * 7) // 7 days expiration
+          if (!error && data?.signedUrl) {
+            return { ...log, audio_url: data.signedUrl }
+          }
+        } catch (e) {
+          logger.warn(`[api/feed] Failed to resign URL for log=${log.id}: ${e.message}`)
+        }
+        return log
+      })
+    )
+    
+    // RSS XML configuration matching premium Apple Podcasts standards
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`
+    xml += `<rss version="2.0" \n`
+    xml += `     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"\n`
+    xml += `     xmlns:content="http://purl.org/rss/1.0/modules/content/">\n`
+    xml += `<channel>\n`
+    xml += `  <title>☀️ Morning Briefing (${userId.slice(0,8)})</title>\n`
+    xml += `  <link>${baseUrl}</link>\n`
+    xml += `  <language>ko</language>\n`
+    xml += `  <itunes:author>AI Anchor</itunes:author>\n`
+    xml += `  <itunes:summary>매일 아침 AI 앵커가 전달하는 맞춤형 개인화 종합 뉴스 브리핑쇼입니다.</itunes:summary>\n`
+    xml += `  <description>매일 아침 AI 앵커가 전달하는 맞춤형 개인화 종합 뉴스 브리핑쇼입니다.</description>\n`
+    xml += `  <itunes:image href="${baseUrl}/a_thumnail.png"/>\n`
+    xml += `  <itunes:category text="Technology"/>\n`
+    xml += `  <itunes:category text="News"/>\n`
+    xml += `  <itunes:explicit>no</itunes:explicit>\n`
+
+    for (const log of historyWithFreshUrls) {
       if (!log.audio_url) continue
       
       const pubDate = new Date(log.created_at).toUTCString()
-      // 임시로 uuid와 날짜 조합을 guid로 사용
-      const guid = `${userId}-${log.id}`
+      const guid = `briefing-${userId}-${log.id}`
+      const cleanSummary = log.script.replace(/\[PAUSE\]/ig, ' ').slice(0, 250) + '...'
       
       xml += `  <item>\n`
-      xml += `    <title>Briefing - ${log.date}</title>\n`
-      xml += `    <description><![CDATA[${log.script}]]></description>\n`
+      xml += `    <title>☀️ AI Briefing - ${log.date}</title>\n`
+      xml += `    <itunes:author>AI Anchor</itunes:author>\n`
+      xml += `    <itunes:summary>${cleanSummary}</itunes:summary>\n`
+      xml += `    <description><![CDATA[${log.script.replace(/\n/g, '<br/>')}]]></description>\n`
       xml += `    <pubDate>${pubDate}</pubDate>\n`
-      xml += `    <enclosure url="${log.audio_url}" type="audio/mpeg"/>\n`
+      xml += `    <enclosure url="${log.audio_url}" length="0" type="audio/mpeg"/>\n`
       xml += `    <guid isPermaLink="false">${guid}</guid>\n`
       xml += `    <itunes:duration>${Math.round(log.duration_ms / 1000)}</itunes:duration>\n`
+      xml += `    <itunes:explicit>no</itunes:explicit>\n`
       xml += `  </item>\n`
     }
 
     xml += `</channel>\n</rss>`
 
-    res.writeHead(200, { 'Content-Type': 'application/rss+xml' })
+    res.writeHead(200, { 'Content-Type': 'application/rss+xml; charset=utf-8' })
     res.end(xml)
   } catch (e) {
     logger.error(`[api/feed] Failed to generate RSS: ${e.message}`)

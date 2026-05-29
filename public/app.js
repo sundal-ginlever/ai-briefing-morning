@@ -95,8 +95,23 @@ async function showApp() {
   currentUser = me
   document.getElementById('user-email').textContent = me.email
 
+  // Set the private podcast feed URL
+  const podcastUrl = `${location.protocol}//${location.host}/api/feed/${me.id}.xml`
+  const podcastInput = document.getElementById('podcast-url-input')
+  if (podcastInput) {
+    podcastInput.value = podcastUrl
+  }
+
   loadStats()
   loadLatest()
+}
+
+function copyPodcastUrl() {
+  const input = document.getElementById('podcast-url-input')
+  if (!input || !input.value) return
+  input.select()
+  navigator.clipboard.writeText(input.value)
+  toast('팟캐스트 주소가 복사되었습니다!', 'ok')
 }
 
 // ── API helper ─────────────────────────────────────────────────────────────

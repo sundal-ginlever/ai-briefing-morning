@@ -108,6 +108,17 @@
         <div class="card-title">최근 브리핑</div>
         <div id="latest-content"></div>
       </div>
+
+      <div class="card" id="podcast-card" style="margin-top: 20px;">
+        <div class="card-title">📻 개인 팟캐스트 구독</div>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:14px">
+          스마트폰 팟캐스트 앱(Apple Podcasts, Pocket Casts, Overcast 등)에 아래 개인 주소를 등록하시면 매일 아침 라디오처럼 편리하게 구독하여 들으실 수 있습니다.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;background:var(--bg);padding:8px 12px;border:1px solid var(--border);border-radius:8px;">
+          <input id="podcast-url-input" type="text" readonly style="flex:1;background:transparent;border:none;color:var(--text);font-size:13px;outline:none;" value="">
+          <button class="btn btn-outline" style="padding:6px 12px;font-size:13px;white-space:nowrap;margin:0;" onclick="copyPodcastUrl()">📋 주소 복사</button>
+        </div>
+      </div>
     </div>
 
     <!-- ── 설정 탭 ── -->

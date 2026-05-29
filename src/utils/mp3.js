@@ -132,3 +132,56 @@ export function cleanMp3Buffer(buf) {
 
   return cleaned;
 }
+
+/**
+ * Parses the sample rate and channel layout (mono/stereo) of the first MP3 frame.
+ * 
+ * @param {Buffer} buf - MP3 buffer
+ * @returns {{sampleRate: number, isMono: boolean} | null} Parsed format, or null if invalid
+ */
+export function getAudioFormat(buf) {
+  if (!buf || buf.length === 0) return null;
+
+  let offset = 0;
+  // Skip ID3v2 tag
+  if (buf.length > 10 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+    const flags = buf[5];
+    const size = (buf[6] << 21) | (buf[7] << 14) | (buf[8] << 7) | buf[9];
+    const hasFooter = (flags & 0x10) !== 0;
+    offset = 10 + size + (hasFooter ? 10 : 0);
+  }
+
+  // Find first frame sync word
+  while (offset < buf.length - 4) {
+    if (buf[offset] === 0xFF && (buf[offset + 1] & 0xE0) === 0xE0) {
+      break;
+    }
+    offset++;
+  }
+
+  if (offset >= buf.length - 4) return null;
+
+  const h = buf.subarray(offset, offset + 4);
+  const versionIndex = (h[1] & 0x18) >> 3;
+  const sampleRateIndex = (h[2] & 0x0C) >> 2;
+  const channelModeIndex = (h[3] & 0xC0) >> 6;
+
+  let version;
+  if (versionIndex === 3) version = 'MPEG-1';
+  else if (versionIndex === 2) version = 'MPEG-2';
+  else if (versionIndex === 0) version = 'MPEG-2.5';
+  else return null;
+
+  const sampleRates = {
+    'MPEG-1': [44100, 48000, 32000, 0],
+    'MPEG-2': [22050, 24000, 16000, 0],
+    'MPEG-2.5': [11025, 12000, 8000, 0]
+  };
+
+  const sampleRate = sampleRates[version]?.[sampleRateIndex];
+  if (!sampleRate) return null;
+
+  const isMono = channelModeIndex === 3;
+
+  return { sampleRate, isMono };
+}

@@ -145,19 +145,26 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
   const scriptChunks = script.split(/\[PAUSE\]/i).map(c => c.trim()).filter(Boolean)
   const audioBuffers = []
   
-  let silenceBuf = null
-  try {
-    const { readFileSync } = await import('fs')
-    const { join } = await import('path')
-    const { fileURLToPath } = await import('url')
-    const __dirname = await import('path').then(p => p.dirname(fileURLToPath(import.meta.url)))
-    silenceBuf = readFileSync(join(__dirname, '../assets/silence_1s.mp3'))
-  } catch (e) {
-    logger.warn(`[tts] Failed to load silence_1s.mp3: ${e.message}`)
-  }
+  const { cleanMp3Buffer, getAudioFormat } = await import('../utils/mp3.js')
 
-  const { cleanMp3Buffer } = await import('../utils/mp3.js')
-  const cleanedSilenceBuf = silenceBuf ? cleanMp3Buffer(silenceBuf) : null
+  let cleanedSilenceBuf = null
+  let fallbackLoaded = false
+
+  const loadFallbackSilence = async () => {
+    if (fallbackLoaded) return
+    fallbackLoaded = true
+    try {
+      const { readFileSync } = await import('fs')
+      const { join } = await import('path')
+      const { fileURLToPath } = await import('url')
+      const __dirname = await import('path').then(p => p.dirname(fileURLToPath(import.meta.url)))
+      const silenceBuf = readFileSync(join(__dirname, '../assets/silence_1s.mp3'))
+      cleanedSilenceBuf = cleanMp3Buffer(silenceBuf)
+      logger.info(`[tts] Loaded fallback silence_1s.mp3 (cleaned)`)
+    } catch (e) {
+      logger.warn(`[tts] Failed to load fallback silence_1s.mp3: ${e.message}`)
+    }
+  }
 
   for (let i = 0; i < scriptChunks.length; i++) {
     logger.info(`${userTag} Synthesizing chunk ${i+1}/${scriptChunks.length}`)
@@ -165,8 +172,50 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
     if (buf) {
       const cleanedBuf = cleanMp3Buffer(buf)
       audioBuffers.push(cleanedBuf)
-      if (i < scriptChunks.length - 1 && cleanedSilenceBuf) {
-        audioBuffers.push(cleanedSilenceBuf)
+      
+      if (i < scriptChunks.length - 1) {
+        // Dynamically initialize pause buffer on the first chunk if not yet initialized
+        if (!cleanedSilenceBuf) {
+          const format = getAudioFormat(cleanedBuf)
+          if (format) {
+            logger.info(`[tts] First chunk audio format: ${format.sampleRate}Hz, ${format.isMono ? 'Mono' : 'Stereo'}`)
+            
+            // Check if ffmpeg is available
+            let ffmpegSuccess = false
+            try {
+              const { execSync } = await import('child_process')
+              execSync('ffmpeg -version', { stdio: 'ignore' })
+              
+              // Generate silence matching the exact format dynamically
+              const { join } = await import('path')
+              const tempSilencePath = join(process.cwd(), `temp_silence_${Date.now()}.mp3`)
+              const cl = format.isMono ? 'mono' : 'stereo'
+              
+              logger.info(`[tts] Generating matching silence file dynamically via FFmpeg...`)
+              execSync(`ffmpeg -y -f lavfi -i anullsrc=r=${format.sampleRate}:cl=${cl} -t 1 -c:a libmp3lame -b:a 128k "${tempSilencePath}"`, { stdio: 'ignore' })
+              
+              const { readFileSync, unlinkSync } = await import('fs')
+              const rawSilence = readFileSync(tempSilencePath)
+              cleanedSilenceBuf = cleanMp3Buffer(rawSilence)
+              unlinkSync(tempSilencePath)
+              ffmpegSuccess = true
+              logger.info(`[tts] Successfully generated and cleaned matching silence chunk!`)
+            } catch (e) {
+              logger.warn(`[tts] FFmpeg dynamic silence generation failed or not available: ${e.message}`)
+            }
+
+            if (!ffmpegSuccess) {
+              await loadFallbackSilence()
+            }
+          } else {
+            logger.warn(`[tts] Failed to parse first chunk format, falling back to static silence`)
+            await loadFallbackSilence()
+          }
+        }
+
+        if (cleanedSilenceBuf) {
+          audioBuffers.push(cleanedSilenceBuf)
+        }
       }
     }
   }

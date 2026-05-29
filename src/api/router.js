@@ -205,7 +205,7 @@ async function handleGetFeed(req, res, url) {
     xml += `  <itunes:author>AI Anchor</itunes:author>\n`
     xml += `  <itunes:summary>매일 아침 AI 앵커가 전달하는 맞춤형 개인화 종합 뉴스 브리핑쇼입니다.</itunes:summary>\n`
     xml += `  <description>매일 아침 AI 앵커가 전달하는 맞춤형 개인화 종합 뉴스 브리핑쇼입니다.</description>\n`
-    xml += `  <itunes:image href="${baseUrl}/a_thumnail.png"/>\n`
+    xml += `  <itunes:image href="${baseUrl}/a_thumbnail.png"/>\n`
     xml += `  <itunes:category text="Technology"/>\n`
     xml += `  <itunes:category text="News"/>\n`
     xml += `  <itunes:explicit>no</itunes:explicit>\n`

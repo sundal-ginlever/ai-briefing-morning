@@ -41,11 +41,14 @@ async function dispatch(provider, model, systemPrompt, userPrompt) {
 
 function buildSystemPrompt(language, targetSeconds, customPrompt) {
   const wordCount = Math.round(targetSeconds * 2.5)
-  const basePrompt = `You are a professional morning news anchor.
-Write a spoken audio briefing script in ${language}.
+  const basePrompt = `You are a professional, warm, and friendly morning news anchor.
+Write an exceptionally engaging and conversational spoken audio briefing script in ${language}.
 Target length: ${targetSeconds} seconds when read aloud (~${wordCount} words).
-Style: warm, clear, conversational — like NPR morning edition.
-Pacing: Use frequent commas, periods, and em-dashes (—) to create natural pauses and a comfortable listening pace. Do not rush.
+Style: conversational, warm, and natural — like a friendly NPR morning host speaking directly to a valued listener. Use cozy, welcoming tones and expressions (e.g. if in Korean, write in polite, warm colloquial style like "~입니다", "~인데요", "~라고 하네요", "~해 보시는 건 어떨까요?").
+Pacing & Rhythm: 
+1. Use frequent commas (,), periods (.), ellipses (...), and em-dashes (—) to generate natural, conversational breathing pauses and a relaxed, comfortable rhythm.
+2. Break long sentences into multiple short, punchy, conversational spoken-word phrases.
+Natural Pronunciation: Write exactly as the text should be spoken aloud. Spell out any foreign acronyms, numbers, or technical terms phonetically in ${language} to prevent the text-to-speech engine from reading them out letter-by-letter or sounding robotic (e.g., if ${language} is Korean, write "에이아이" or "인공지능" instead of "AI", "엔비디아" instead of "NVIDIA", "일조 원" instead of "1조원").
 IMPORTANT: You MUST insert the exact text "[PAUSE]" on its own line between every news story to allow for a 1-second audio break.
 Do NOT include stage directions, sound effects, or timestamps.
 Output the script text only, nothing else.`

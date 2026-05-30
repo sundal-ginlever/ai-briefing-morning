@@ -62,12 +62,16 @@ function buildEmailHTML({ audioUrl, script, headlines, date }) {
 
   const audioSection = audioUrl && !audioUrl.startsWith('file://')
     ? `<div style="margin:24px 0;text-align:center">
-        <a href="${audioUrl}"
-           style="background:#1a1a2e;color:#fff;padding:14px 32px;
+        <a href="${audioUrl}&download="
+           style="background:#0f172a;color:#fff;padding:14px 32px;
                   border-radius:8px;text-decoration:none;font-size:16px;
-                  font-weight:600;display:inline-block">
-          ▶ Listen to Today's Briefing
+                  font-weight:600;display:inline-block;box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1)">
+          📥 Download Briefing (음성 파일 다운로드)
         </a>
+        <p style="color:#64748b;font-size:12px;margin-top:12px;line-height:1.5">
+          * 이메일 앱 내부 재생은 스마트폰 화면이 꺼지면 끊길 수 있습니다.<br/>
+          음성을 다운로드해 플레이어로 들으시거나, <b>대시보드 웹페이지</b> 혹은 <b>팟캐스트</b>를 이용해 주세요!
+        </p>
       </div>`
     : '<p style="color:#888">(Audio not available — script below)</p>'
 
@@ -110,7 +114,7 @@ function buildEmailText({ audioUrl, script, headlines, date }) {
     ...headlines.map((h, i) => `${i + 1}. ${h}`),
     '',
     audioUrl && !audioUrl.startsWith('file://')
-      ? `Listen: ${audioUrl}`
+      ? `Download: ${audioUrl}&download=`
       : '(Audio not available)',
     '',
     '--- Script ---',

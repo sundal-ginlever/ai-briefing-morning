@@ -81,7 +81,7 @@ jobs:
           NEWS_CATEGORIES:       ${{ vars.NEWS_CATEGORIES || 'general,technology' }}
           NEWS_PAGE_SIZE:        ${{ vars.NEWS_PAGE_SIZE || '5' }}
           BRIEFING_LANGUAGE:     ${{ vars.BRIEFING_LANGUAGE || 'English' }}
-          BRIEFING_TARGET_SECONDS: ${{ vars.BRIEFING_TARGET_SECONDS || '150' }}
+          BRIEFING_TARGET_SECONDS: ${{ vars.BRIEFING_TARGET_SECONDS || '120' }}
 
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then

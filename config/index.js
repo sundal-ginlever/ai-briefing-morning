@@ -74,7 +74,7 @@ export const config = {
   },
   briefing: {
     language:      optional('BRIEFING_LANGUAGE',       'English'),
-    targetSeconds: parseInt(optional('BRIEFING_TARGET_SECONDS', '150'), 10),
+    targetSeconds: parseInt(optional('BRIEFING_TARGET_SECONDS', '120'), 10),
   },
   server: {
     adminEmails: optional('ADMIN_EMAILS', '').split(',').map(e => e.trim()).filter(Boolean),

@@ -219,7 +219,53 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
       }
     }
   }
-  const audioBuffer = audioBuffers.length > 0 ? Buffer.concat(audioBuffers) : null
+  
+  let audioBuffer = null
+  if (audioBuffers.length > 0) {
+    let ffmpegSuccess = false
+    try {
+      const { execSync } = await import('child_process')
+      execSync('ffmpeg -version', { stdio: 'ignore' })
+
+      logger.info(`[tts] FFmpeg detected. Merging and re-encoding ${audioBuffers.length} chunks to 128k CBR MP3...`)
+      const { writeFileSync, unlinkSync, readFileSync } = await import('fs')
+      const { join } = await import('path')
+
+      const tempPaths = []
+      const listLines = []
+      const timestamp = Date.now()
+
+      for (let i = 0; i < audioBuffers.length; i++) {
+        const p = join(process.cwd(), `temp_chunk_${i}_${timestamp}.mp3`).replace(/\\/g, '/')
+        writeFileSync(p, audioBuffers[i])
+        tempPaths.push(p)
+        listLines.push(`file '${p}'`)
+      }
+
+      const listPath = join(process.cwd(), `temp_list_${timestamp}.txt`).replace(/\\/g, '/')
+      writeFileSync(listPath, listLines.join('\n'), 'utf8')
+
+      const outputPath = join(process.cwd(), `temp_output_${timestamp}.mp3`).replace(/\\/g, '/')
+
+      execSync(`ffmpeg -y -f concat -safe 0 -i "${listPath}" -c:a libmp3lame -b:a 128k "${outputPath}"`, { stdio: 'ignore' })
+
+      audioBuffer = readFileSync(outputPath)
+      ffmpegSuccess = true
+      logger.info(`[tts] FFmpeg merge and re-encoding completed successfully. Final size: ${(audioBuffer.length / 1024).toFixed(1)}KB`)
+
+      // Cleanup
+      for (const p of [...tempPaths, listPath, outputPath]) {
+        try { unlinkSync(p) } catch (e) {}
+      }
+    } catch (e) {
+      logger.warn(`[tts] FFmpeg merge/re-encode failed, falling back to binary concatenation: ${e.message}`)
+    }
+
+    if (!ffmpegSuccess) {
+      logger.info(`[tts] Performing direct binary concatenation of MP3 chunks`)
+      audioBuffer = Buffer.concat(audioBuffers)
+    }
+  }
 
   // Step 4
   logger.info(`${userTag} [4/6] Saving audio`)

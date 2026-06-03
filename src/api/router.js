@@ -45,6 +45,16 @@ function err(res, status, message) {
   json(res, status, { error: message })
 }
 
+/** XML 특수문자 이스케이프 (RSS 피드 텍스트 노드용) */
+function escapeXml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
 async function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = ''
@@ -218,12 +228,12 @@ async function handleGetFeed(req, res, url) {
       const cleanSummary = log.script.replace(/\[PAUSE\]/ig, ' ').slice(0, 250) + '...'
       
       xml += `  <item>\n`
-      xml += `    <title>☀️ AI Briefing - ${log.date}</title>\n`
+      xml += `    <title>☀️ AI Briefing - ${escapeXml(log.date)}</title>\n`
       xml += `    <itunes:author>AI Anchor</itunes:author>\n`
-      xml += `    <itunes:summary>${cleanSummary}</itunes:summary>\n`
-      xml += `    <description><![CDATA[${log.script.replace(/\n/g, '<br/>')}]]></description>\n`
+      xml += `    <itunes:summary>${escapeXml(cleanSummary)}</itunes:summary>\n`
+      xml += `    <description><![CDATA[${log.script.replace(/\]\]>/g, ']]&gt;').replace(/\n/g, '<br/>')}]]></description>\n`
       xml += `    <pubDate>${pubDate}</pubDate>\n`
-      xml += `    <enclosure url="${log.audio_url}" length="0" type="audio/mpeg"/>\n`
+      xml += `    <enclosure url="${escapeXml(log.audio_url)}" length="0" type="audio/mpeg"/>\n`
       xml += `    <guid isPermaLink="false">${guid}</guid>\n`
       xml += `    <itunes:duration>${Math.round(log.duration_ms / 1000)}</itunes:duration>\n`
       xml += `    <itunes:explicit>no</itunes:explicit>\n`

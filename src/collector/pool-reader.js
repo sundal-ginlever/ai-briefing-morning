@@ -11,6 +11,15 @@ async function getClient() {
 }
 
 /**
+ * Supabase PostgREST의 `not in` 필터용 값 목록을 안전하게 포맷.
+ * 배열을 그대로 넘기면 괄호 없이 직렬화돼 필터가 동작하지 않거나,
+ * URL 내 쉼표/괄호 때문에 깨질 수 있으므로 ("v1","v2") 형태로 감싼다.
+ */
+function toInList(values) {
+  return `(${values.map(v => `"${String(v).replace(/"/g, '')}"`).join(',')})`
+}
+
+/**
  * news pool에서 최근 24시간 기사를 가져옴. (사용자별로 읽은 기사 제외)
  */
 export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, override = {}) {
@@ -59,7 +68,7 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
       .limit(limit)
 
     if (usedUrls.length > 0) {
-      query = query.not('url', 'in', usedUrls)
+      query = query.not('url', 'in', toInList(usedUrls))
     }
 
     const { data: kwData, error: kwError } = await query
@@ -84,7 +93,7 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
       .limit(candidateLimit)
 
     if (allExclude.length > 0) {
-      query = query.not('url', 'in', allExclude)
+      query = query.not('url', 'in', toInList(allExclude))
     }
 
     const { data: candidates, error: genError } = await query

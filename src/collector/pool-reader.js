@@ -138,11 +138,3 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
     publishedAt: a.published_at || a.published_at,
   }))
 }
-
-/**
- * 브리핑에 사용된 기사를 마킹. (더 이상 전역 플래그를 사용하지 않으므로 빈 함수 유지)
- */
-export async function markArticlesAsUsed(urls) {
-  // Phase 7: 로그 테이블(a_briefing_logs)을 통해 중복을 방지하므로 아무 작업도 하지 않음
-  logger.info(`[pool-reader] markArticlesAsUsed disabled (moved to user-specific logging)`)
-}

@@ -20,7 +20,7 @@ import {
   getUserSettings,
   settingsToOverride,
 } from '../api/users.js'
-import { fetchArticlesFromPool, markArticlesAsUsed } from '../collector/pool-reader.js'
+import { fetchArticlesFromPool } from '../collector/pool-reader.js'
 import { config } from '../../config/index.js'
 
 const isDryRun   = process.argv.includes('--dry-run')
@@ -29,73 +29,9 @@ const targetUser = process.argv.find(a => a.startsWith('--user='))?.split('=')[1
 // ─── Phase 3: 동시성 제어 상수 ──────────────────────────────────────────────
 const MAX_CONCURRENCY = parseInt(process.env.MAX_CONCURRENCY ?? '5', 10)
 
-// ─── Phase 3: NewsAPI 인메모리 캐시 ──────────────────────────────────────────
-// 같은 카테고리+국가를 구독하는 여러 유저가 동시에 실행될 때
-// NewsAPI를 한 번만 호출하고 결과를 공유합니다.
-const NEWS_CACHE_TTL_MS = 10 * 60 * 1000   // 10분
-const newsCache = new Map()                // key → { data, expiresAt, promise? }
-
-/**
- * 캐시 적용 뉴스 fetch.
- * 동일 키에 대해 동시 요청이 들어오면 하나의 API 호출만 실행하고 나머지는 대기합니다.
- */
-async function fetchNewsWithCache(newsOpts = {}) {
-  const cacheKey = buildNewsCacheKey(newsOpts)
-
-  // 1) 유효한 캐시 히트
-  const cached = newsCache.get(cacheKey)
-  if (cached) {
-    if (cached.data && Date.now() < cached.expiresAt) {
-      logger.info(`[news-cache] HIT key="${cacheKey}" (${cached.data.length} articles)`)
-      return cached.data
-    }
-    // 2) 다른 코루틴이 이미 fetch 중이면 그 결과를 대기
-    if (cached.promise) {
-      logger.info(`[news-cache] PENDING key="${cacheKey}" — waiting...`)
-      return await cached.promise
-    }
-  }
-
-  // 3) 캐시 미스 — fetch 시작하고 promise를 등록
-  logger.info(`[news-cache] MISS key="${cacheKey}" — fetching...`)
-  const entry = { data: null, expiresAt: 0, promise: null }
-
-  entry.promise = fetchNews(newsOpts)
-    .then(articles => {
-      entry.data      = articles
-      entry.expiresAt = Date.now() + NEWS_CACHE_TTL_MS
-      entry.promise   = null
-      return articles
-    })
-    .catch(err => {
-      newsCache.delete(cacheKey)   // 실패 시 캐시에서 제거
-      throw err
-    })
-
-  newsCache.set(cacheKey, entry)
-  return await entry.promise
-}
-
-function buildNewsCacheKey(opts) {
-  const country    = opts.country    ?? config.news.country
-  const categories = opts.categories ?? config.news.categories
-  const pageSize   = opts.pageSize   ?? config.news.pageSize
-  return `${country}:${[...categories].sort().join(',')}:${pageSize}`
-}
-
-/** 스케줄 완료 후 캐시 정리 */
-function clearExpiredNewsCache() {
-  const now = Date.now()
-  for (const [key, entry] of newsCache) {
-    if (entry.expiresAt > 0 && now >= entry.expiresAt) {
-      newsCache.delete(key)
-    }
-  }
-}
-
 // ─── 단일 사용자 파이프라인 ───────────────────────────────────────────────────
 
-export async function runPipeline({ userId = null, override = {}, useCache = false, forceDate = null } = {}) {
+export async function runPipeline({ userId = null, override = {}, forceDate = null } = {}) {
   const startTime = Date.now()
   const date      = forceDate || todaySlug(override.schedule?.timezone || 'UTC')
   const dateLabel = todayReadable(override.schedule?.timezone || 'UTC')
@@ -123,9 +59,7 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
     }
   } catch (e) {
     logger.info(`${userTag} Pool unavailable (${e.message}), falling back to live fetch`)
-    articles = useCache
-      ? await fetchNewsWithCache(newsOpts)
-      : await fetchNews(newsOpts)
+    articles = await fetchNews(newsOpts)
   }
   if (articles.length === 0) throw new Error('No articles available')
   articles.forEach((a, i) => logger.info(`  ${i+1}. ${a.title}`))
@@ -298,14 +232,6 @@ export async function runPipeline({ userId = null, override = {}, useCache = fal
     logger.warn(`${userTag} Failed to save MD locally: ${err.message}`)
   }
 
-  // Mark pool articles as used
-  try {
-    const poolUrls = articles.map(a => a.url).filter(Boolean)
-    if (poolUrls.length > 0) await markArticlesAsUsed(poolUrls)
-  } catch (e) {
-    logger.warn(`${userTag} Failed to mark pool articles: ${e.message}`)
-  }
-
   logger.info(`${userTag} Done in ${(durationMs/1000).toFixed(1)}s`)
   return { userId, articles, script, audioUrl, durationMs }
 }
@@ -399,10 +325,9 @@ export async function runScheduledUsers() {
   const tasks = usersToRun.map(row => {
     const profile  = row.a_user_profiles
     const override = settingsToOverride(row)
-    return () => runPipeline({ 
-      userId:   profile.id, 
-      override, 
-      useCache: true,
+    return () => runPipeline({
+      userId:   profile.id,
+      override,
       forceDate: row.calculatedDate // 미리 계산된 날짜 전달
     })
   })
@@ -420,9 +345,6 @@ export async function runScheduledUsers() {
       logger.error(`[scheduler] Failed userId=${profile.id}: ${r.reason?.message || r.reason}`)
     }
   })
-
-  // 스케줄 완료 후 만료된 뉴스 캐시 정리
-  clearExpiredNewsCache()
 
   const totalDuration = ((Date.now() - schedulerStart) / 1000).toFixed(1)
   logger.info(`[scheduler] ok=${ok} fail=${fail} | total=${totalDuration}s`)

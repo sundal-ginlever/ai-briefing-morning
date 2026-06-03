@@ -56,7 +56,7 @@ node src/pipeline/runner.js             # 전체 실행
    supabase/migrations/001_create_briefing_logs.sql
    supabase/migrations/002_phase2_users.sql
    ```
-3. **Storage** → New bucket → 이름: `briefing-audio`, Public: **OFF**
+3. **Storage** → New bucket → 이름: `ai-briefing-audio`, Public: **OFF**
 4. **Authentication → Providers** → Email 활성화
 5. (권장) **Authentication → Email Templates** → 확인 메일 커스터마이징
 6. **Settings → API**에서 키 복사:

@@ -10,7 +10,7 @@ import { fetchNews }           from './news.js'
 import { generateScript }      from '../providers/llm.js'
 import { synthesizeSpeech }    from '../providers/tts.js'
 import { saveAudio }           from '../providers/storage.js'
-import { sendBriefingEmail }   from '../providers/email.js'
+import { sendBriefingEmail, sendFailureAlert } from '../providers/email.js'
 import { saveBriefingLog }     from '../providers/db.js'
 import { logger }              from '../utils/logger.js'
 import { todaySlug, todayReadable } from '../utils/date.js'
@@ -116,26 +116,26 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
             
             // Check if ffmpeg is available
             let ffmpegSuccess = false
+            const { join: joinPath } = await import('path')
+            const tempSilencePath = joinPath(process.cwd(), `temp_silence_${Date.now()}.mp3`)
             try {
               const { execSync } = await import('child_process')
               execSync('ffmpeg -version', { stdio: 'ignore' })
-              
-              // Generate silence matching the exact format dynamically
-              const { join } = await import('path')
-              const tempSilencePath = join(process.cwd(), `temp_silence_${Date.now()}.mp3`)
+
               const cl = format.isMono ? 'mono' : 'stereo'
-              
               logger.info(`[tts] Generating matching silence file dynamically via FFmpeg...`)
               execSync(`ffmpeg -y -f lavfi -i anullsrc=r=${format.sampleRate}:cl=${cl} -t 1 -c:a libmp3lame -b:a 128k "${tempSilencePath}"`, { stdio: 'ignore' })
-              
-              const { readFileSync, unlinkSync } = await import('fs')
+
+              const { readFileSync } = await import('fs')
               const rawSilence = readFileSync(tempSilencePath)
               cleanedSilenceBuf = cleanMp3Buffer(rawSilence)
-              unlinkSync(tempSilencePath)
               ffmpegSuccess = true
               logger.info(`[tts] Successfully generated and cleaned matching silence chunk!`)
             } catch (e) {
               logger.warn(`[tts] FFmpeg dynamic silence generation failed or not available: ${e.message}`)
+            } finally {
+              const { unlinkSync, existsSync } = await import('fs')
+              if (existsSync(tempSilencePath)) try { unlinkSync(tempSilencePath) } catch (_) {}
             }
 
             if (!ffmpegSuccess) {
@@ -157,18 +157,20 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
   let audioBuffer = null
   if (audioBuffers.length > 0) {
     let ffmpegSuccess = false
+    const { writeFileSync, unlinkSync, readFileSync, existsSync } = await import('fs')
+    const { join } = await import('path')
+    const timestamp = Date.now()
+    const tempPaths = []
+    const listPath = join(process.cwd(), `temp_list_${timestamp}.txt`).replace(/\\/g, '/')
+    const outputPath = join(process.cwd(), `temp_output_${timestamp}.mp3`).replace(/\\/g, '/')
+
     try {
       const { execSync } = await import('child_process')
       execSync('ffmpeg -version', { stdio: 'ignore' })
 
       logger.info(`[tts] FFmpeg detected. Merging and re-encoding ${audioBuffers.length} chunks to 128k CBR MP3...`)
-      const { writeFileSync, unlinkSync, readFileSync } = await import('fs')
-      const { join } = await import('path')
 
-      const tempPaths = []
       const listLines = []
-      const timestamp = Date.now()
-
       for (let i = 0; i < audioBuffers.length; i++) {
         const p = join(process.cwd(), `temp_chunk_${i}_${timestamp}.mp3`).replace(/\\/g, '/')
         writeFileSync(p, audioBuffers[i])
@@ -176,23 +178,18 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
         listLines.push(`file '${p}'`)
       }
 
-      const listPath = join(process.cwd(), `temp_list_${timestamp}.txt`).replace(/\\/g, '/')
       writeFileSync(listPath, listLines.join('\n'), 'utf8')
-
-      const outputPath = join(process.cwd(), `temp_output_${timestamp}.mp3`).replace(/\\/g, '/')
-
       execSync(`ffmpeg -y -f concat -safe 0 -i "${listPath}" -c:a libmp3lame -b:a 128k "${outputPath}"`, { stdio: 'ignore' })
 
       audioBuffer = readFileSync(outputPath)
       ffmpegSuccess = true
       logger.info(`[tts] FFmpeg merge and re-encoding completed successfully. Final size: ${(audioBuffer.length / 1024).toFixed(1)}KB`)
-
-      // Cleanup
-      for (const p of [...tempPaths, listPath, outputPath]) {
-        try { unlinkSync(p) } catch (e) {}
-      }
     } catch (e) {
       logger.warn(`[tts] FFmpeg merge/re-encode failed, falling back to binary concatenation: ${e.message}`)
+    } finally {
+      for (const p of [...tempPaths, listPath, outputPath]) {
+        if (existsSync(p)) try { unlinkSync(p) } catch (_) {}
+      }
     }
 
     if (!ffmpegSuccess) {
@@ -338,13 +335,15 @@ export async function runScheduledUsers() {
   const ok   = results.filter(r => r.status === 'fulfilled').length
   const fail = results.filter(r => r.status === 'rejected').length
 
-  // 실패한 유저 상세 로깅
-  results.forEach((r, i) => {
-    if (r.status === 'rejected') {
-      const profile = usersToRun[i].a_user_profiles
-      logger.error(`[scheduler] Failed userId=${profile.id}: ${r.reason?.message || r.reason}`)
-    }
-  })
+  // 실패한 유저 상세 로깅 + 알림
+  const alertDate = new Date().toISOString().slice(0, 10)
+  await Promise.allSettled(results.map((r, i) => {
+    if (r.status !== 'rejected') return Promise.resolve()
+    const profile = usersToRun[i].a_user_profiles
+    const errMsg  = r.reason?.message || String(r.reason)
+    logger.error(`[scheduler] Failed userId=${profile.id}: ${errMsg}`)
+    return sendFailureAlert({ userId: profile.id, errorMessage: errMsg, date: alertDate })
+  }))
 
   const totalDuration = ((Date.now() - schedulerStart) / 1000).toFixed(1)
   logger.info(`[scheduler] ok=${ok} fail=${fail} | total=${totalDuration}s`)
@@ -363,8 +362,10 @@ if (process.argv[1].endsWith('runner.js')) {
       await runScheduledUsers()
     }
   }
-  run().then(() => process.exit(0)).catch(err => {
+  run().then(() => process.exit(0)).catch(async err => {
     logger.error(`FATAL: ${err.message}`)
+    const alertDate = new Date().toISOString().slice(0, 10)
+    await sendFailureAlert({ userId: targetUser ?? null, errorMessage: err.message, date: alertDate }).catch(() => {})
     process.exit(1)
   })
 }

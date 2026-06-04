@@ -53,6 +53,38 @@ export async function sendBriefingEmail({ audioUrl, script, headlines, date, to 
   logger.info(`[email] sent messageId=${info.messageId}`)
 }
 
+// ─── 실패 알림 ────────────────────────────────────────────────────────────────
+
+/**
+ * 파이프라인 실패 시 관리자에게 알림 이메일 발송.
+ * SMTP 미설정 시 조용히 skip.
+ */
+export async function sendFailureAlert({ userId, errorMessage, date }) {
+  if (config.email.provider === 'none' || !config.email.smtp.user) return
+
+  const to = config.email.from || config.email.smtp.user
+  const userTag = userId ? userId.slice(0, 8) : 'default'
+
+  try {
+    const { createTransport } = await import('nodemailer')
+    const transporter = createTransport({
+      host:   config.email.smtp.host,
+      port:   config.email.smtp.port,
+      secure: config.email.smtp.port === 465,
+      auth:   { user: config.email.smtp.user, pass: config.email.smtp.pass },
+    })
+    await transporter.sendMail({
+      from:    `"Morning Briefing Alert" <${config.email.smtp.user}>`,
+      to,
+      subject: `🚨 Briefing Pipeline Failed — ${date} [${userTag}]`,
+      text:    `파이프라인 실패\n\n날짜: ${date}\n유저: ${userTag}\n\n오류:\n${errorMessage}`,
+    })
+    logger.info(`[email] failure alert sent to ${to}`)
+  } catch (e) {
+    logger.warn(`[email] failed to send failure alert: ${e.message}`)
+  }
+}
+
 // ─── Templates ───────────────────────────────────────────────────────────────
 
 function buildEmailHTML({ audioUrl, script, headlines, date }) {

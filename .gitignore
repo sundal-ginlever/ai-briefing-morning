@@ -2,3 +2,7 @@ node_modules/
 .env
 output/
 *.mp3
+temp_chunk_*.mp3
+temp_silence_*.mp3
+temp_output_*.mp3
+temp_list_*.txt

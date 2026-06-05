@@ -41,7 +41,7 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
 
   const newsOpts     = override.news     ?? {}
   const briefingOpts = override.briefing ?? {}
-  const emailTo      = override.email?.to ?? config.email.to
+  const emailTo      = override.email?.to || config.email.to
 
   // LLM/TTS per-user override — config injection
   const llmOpts = override.llm ?? {}
@@ -322,6 +322,8 @@ export async function runScheduledUsers() {
   const tasks = usersToRun.map(row => {
     const profile  = row.a_user_profiles
     const override = settingsToOverride(row)
+    // delivery_email 미설정 시 계정 이메일로 폴백 (/api/run 핸들러와 동일한 처리)
+    if (!override.email?.to) override.email = { ...override.email, to: profile.email }
     return () => runPipeline({
       userId:   profile.id,
       override,

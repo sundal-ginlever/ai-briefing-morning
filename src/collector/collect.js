@@ -1,9 +1,12 @@
 // src/collector/collect.js
 import { config } from '../../config/index.js'
 import { logger } from '../utils/logger.js'
-import { collectFromNewsAPI } from './sources/newsapi.js'
+import { collectFromNewsAPI, collectFromNewsAPIByKeywords } from './sources/newsapi.js'
 import { collectFromRSS } from './sources/rss.js'
 import { deduplicateArticles } from './dedup.js'
+
+// NewsAPI top-headlines가 허용하는 유효 카테고리 (그 외 값은 무시)
+const VALID_CATEGORIES = ['business', 'entertainment', 'general', 'health', 'science', 'sports', 'technology']
 
 async function getSupabaseClient() {
   if (!config.supabase.url || !config.supabase.serviceKey) return null
@@ -13,23 +16,63 @@ async function getSupabaseClient() {
   })
 }
 
+/**
+ * 스케줄 활성 유저들의 키워드/카테고리를 모아(union) 수집 대상으로 사용.
+ * 유저 설정이 없거나 조회 실패 시 config(워크플로 env) 폴백.
+ */
+async function getActiveUserPrefs(sb) {
+  if (!sb) return { keywords: [], categories: config.news.categories }
+  const { data, error } = await sb
+    .from('a_user_settings')
+    .select('news_keywords, news_categories')
+    .eq('schedule_enabled', true)
+
+  if (error || !data) {
+    logger.warn(`[collector] Failed to load user prefs: ${error?.message}`)
+    return { keywords: [], categories: config.news.categories }
+  }
+
+  const kw = new Set(), cat = new Set()
+  for (const row of data) {
+    for (const k of (row.news_keywords || [])) { if (k && k.trim()) kw.add(k.trim()) }
+    for (const c of (row.news_categories || [])) {
+      const cc = c.trim().toLowerCase()
+      if (VALID_CATEGORIES.includes(cc)) cat.add(cc)
+    }
+  }
+  return {
+    keywords:   [...kw],
+    categories: cat.size > 0 ? [...cat] : config.news.categories,
+  }
+}
+
 async function main() {
   const startTime = Date.now()
   logger.info('[collector] Starting news collection...')
 
+  const sb = await getSupabaseClient()
+  const prefs = await getActiveUserPrefs(sb)
+  logger.info(`[collector] Active prefs — categories=[${prefs.categories}] keywords=[${prefs.keywords}]`)
+
   // NewsAPI는 하루 한도(100회) 방어를 위해 짝수 시간(UTC)에만 수집
   const currentHour = new Date().getUTCHours()
   const shouldRunNewsAPI = currentHour % 2 === 0
-  
-  const tasks = [ collectFromRSS() ]
+
+  const tasks     = [ collectFromRSS() ]
+  const taskNames = [ 'RSS' ]
   if (shouldRunNewsAPI) {
-    tasks.push(
-      collectFromNewsAPI(config.news.apiKey, {
-        country: config.news.country,
-        categories: config.news.categories,
-        pageSize: 10,
-      })
-    )
+    tasks.push(collectFromNewsAPI(config.news.apiKey, {
+      country:    config.news.country,
+      categories: prefs.categories,
+      pageSize:   10,
+    }))
+    taskNames.push('NewsAPI-categories')
+
+    // 유저 관심 키워드 기반 수집 (산업/관심 주제 기사 축적)
+    if (prefs.keywords.length > 0) {
+      tasks.push(collectFromNewsAPIByKeywords(config.news.apiKey, prefs.keywords, 20))
+      taskNames.push('NewsAPI-keywords')
+    }
   } else {
     logger.info('[collector] Skipping NewsAPI on odd hours to conserve rate limits')
   }
@@ -40,7 +83,7 @@ async function main() {
   // 2) 결과 합산
   const allArticles = []
   results.forEach((r, i) => {
-    const sourceName = shouldRunNewsAPI ? (i === 0 ? 'RSS' : 'NewsAPI') : 'RSS'
+    const sourceName = taskNames[i] ?? 'unknown'
     if (r.status === 'fulfilled') {
       logger.info(`[collector] ${sourceName}: ${r.value.length} articles`)
       allArticles.push(...r.value)
@@ -59,7 +102,6 @@ async function main() {
   }
 
   // 4) Supabase에 UPSERT
-  const sb = await getSupabaseClient()
   if (!sb) {
     logger.warn('[collector] Supabase not configured, skipping save.')
     return

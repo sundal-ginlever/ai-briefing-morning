@@ -4,6 +4,36 @@ import { withRetry, isRetryable } from '../../utils/retry.js'
 import { config } from '../../../config/index.js'
 
 const BASE_URL_TOP = 'https://newsapi.org/v2/top-headlines'
+const BASE_URL_EVERYTHING = 'https://newsapi.org/v2/everything'
+
+/**
+ * 키워드 기반 수집 (/v2/everything). 유저 관심 키워드를 OR로 묶어 검색.
+ * pool에 산업/관심 주제 기사를 축적하기 위함.
+ */
+export async function collectFromNewsAPIByKeywords(apiKey, keywords, pageSize = 20) {
+  if (!keywords || keywords.length === 0) return []
+
+  const q   = keywords.join(' OR ')
+  const url = `${BASE_URL_EVERYTHING}?apiKey=${apiKey}&q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=${pageSize}`
+  logger.info(`[collector:newsapi] Fetching by keywords: "${q}"`)
+
+  const data = await withRetry(
+    () => fetchCategory(url),
+    { label: 'news:keywords', maxAttempts: 3, baseDelayMs: 3000, retryIf: isRetryable }
+  )
+
+  return (data.articles ?? []).map(a => ({
+    title:        a.title       ?? '(no title)',
+    description:  a.description ?? '',
+    source_name:  a.source?.name ?? 'Unknown',
+    source_type:  'newsapi',
+    url:          a.url          ?? '',
+    published_at: a.publishedAt  ?? new Date().toISOString(),
+    categories:   [],
+    keywords:     keywords,
+    language:     'en',
+  }))
+}
 
 export async function collectFromNewsAPI(apiKey, options = {}) {
   const { country, categories, pageSize } = options

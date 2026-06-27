@@ -19,17 +19,36 @@ function toInList(values) {
   return `(${values.map(v => `"${String(v).replace(/"/g, '')}"`).join(',')})`
 }
 
+/** 기사 제목+설명에서 매칭되는 키워드 목록 반환 (대소문자 무시) */
+function matchedKeywords(article, keywords) {
+  const text = `${article.title || ''} ${article.description || ''}`.toLowerCase()
+  return keywords.filter(k => text.includes(String(k).toLowerCase()))
+}
+
 /**
  * news pool에서 최근 24시간 기사를 가져옴. (사용자별로 읽은 기사 제외)
+ * 반환: { articles, report }  ← report는 선정 검증 리포트용 메타데이터
  */
 export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, override = {}) {
   const sb = await getClient()
   if (!sb) throw new Error('Supabase not configured')
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const safeKeywords = keywords || []
   let finalArticles = []
 
-  const safeKeywords = keywords || []
+  // 검증 리포트용 메타데이터 (선정 로직에는 영향 없음)
+  const report = {
+    keywords:             safeKeywords,
+    poolTotal:            0,
+    keywordDistribution:  {},
+    excludedDuplicates:   0,
+    stage1Count:          0,
+    stage2Count:          0,
+    stage2CandidateCount: 0,
+    stage2Method:         'none',   // 'ai' | 'slice' | 'none'
+    selected:             [],
+  }
 
   // 0) 사용자가 과거 7일간 읽은 기사 URL 목록 추출 (중복 방지)
   let usedUrls = []
@@ -40,7 +59,7 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
       .select('articles')
       .eq('user_id', userId)
       .gte('created_at', weekAgo)
-    
+
     if (logsData) {
       for (const row of logsData) {
         if (Array.isArray(row.articles)) {
@@ -50,6 +69,23 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
         }
       }
     }
+  }
+  report.excludedDuplicates = usedUrls.length
+
+  // 리포트용: 24h pool 분포 통계 (가벼운 필드만, 선정에는 미사용)
+  try {
+    const { data: poolAll } = await sb
+      .from('a_news_pool')
+      .select('title, description')
+      .gte('collected_at', since)
+    report.poolTotal = poolAll?.length ?? 0
+    for (const k of safeKeywords) {
+      report.keywordDistribution[k] = (poolAll || []).filter(a =>
+        `${a.title || ''} ${a.description || ''}`.toLowerCase().includes(String(k).toLowerCase())
+      ).length
+    }
+  } catch (e) {
+    logger.warn(`[pool-reader] pool stats failed: ${e.message}`)
   }
 
   // 1) 키워드가 있을 경우 키워드 매칭 기사 먼저 검색 (우선순위 1단계)
@@ -76,6 +112,16 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
     if (kwError) logger.warn(`[pool-reader] Keyword search failed: ${kwError.message}`)
     else finalArticles = kwData || []
   }
+  report.stage1Count = finalArticles.length
+  for (const a of finalArticles) {
+    report.selected.push({
+      title:      a.title,
+      url:        a.url,
+      source:     a.source_name,
+      selectedBy: 'keyword',
+      matched:    matchedKeywords(a, safeKeywords),
+    })
+  }
 
   // 2) 기사가 부족하면 AI 기반의 최정예 핫이슈 뉴스로 채움 (우선순위 2단계 - AI 필터)
   if (finalArticles.length < limit) {
@@ -100,8 +146,9 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
     if (genError) {
       logger.warn(`[pool-reader] Fallback candidate search failed: ${genError.message}`)
     } else if (candidates && candidates.length > 0) {
+      report.stage2CandidateCount = candidates.length
       logger.info(`[pool-reader] Fetched ${candidates.length} candidates. Selecting top ${remaining} via AI...`)
-      
+
       const normalizedCandidates = candidates.map(a => ({
         title:       a.title,
         description: a.description || '',
@@ -110,31 +157,47 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
         publishedAt: a.published_at,
       }))
 
+      let picked = []
       try {
         const { filterTopArticles } = await import('../providers/llm.js')
         const hotArticles = await filterTopArticles(normalizedCandidates, remaining, override)
-        
-        finalArticles.push(...hotArticles.map(a => ({
-          title:       a.title,
-          description: a.description,
-          source_name: a.source,
-          url:         a.url,
+        picked = hotArticles.map(a => ({
+          title:        a.title,
+          description:  a.description,
+          source_name:  a.source,
+          url:          a.url,
           published_at: a.publishedAt,
-        })))
+        }))
+        report.stage2Method = 'ai'
       } catch (err) {
         logger.warn(`[pool-reader] AI Curation failed: ${err.message}. Falling back to standard slicing.`)
-        finalArticles.push(...candidates.slice(0, remaining))
+        picked = candidates.slice(0, remaining)
+        report.stage2Method = 'slice'
+      }
+
+      finalArticles.push(...picked)
+      report.stage2Count = picked.length
+      for (const a of picked) {
+        report.selected.push({
+          title:      a.title,
+          url:        a.url,
+          source:     a.source_name,
+          selectedBy: report.stage2Method === 'ai' ? 'ai-curation' : 'ai-slice',
+          matched:    matchedKeywords(a, safeKeywords),
+        })
       }
     }
   }
 
-  logger.info(`[pool-reader] Total ${finalArticles.length} articles selected (Keywords matched: ${finalArticles.length - (limit - safeKeywords.length)})`)
+  logger.info(`[pool-reader] Selected ${finalArticles.length} (keyword=${report.stage1Count}, ai=${report.stage2Count}) | pool24h=${report.poolTotal}, excludedDup=${report.excludedDuplicates}`)
 
-  return finalArticles.map(a => ({
+  const articles = finalArticles.map(a => ({
     title:       a.title,
     description: a.description || '',
     source:      a.source_name,
     url:         a.url,
-    publishedAt: a.published_at || a.published_at,
+    publishedAt: a.published_at || null,
   }))
+
+  return { articles, report }
 }

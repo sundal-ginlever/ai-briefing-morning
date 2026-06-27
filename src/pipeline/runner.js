@@ -50,8 +50,11 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
   // Step 1 — 뉴스 수집 (pool 우선, 폴백: 실시간 호출)
   logger.info(`${userTag} [1/6] Fetching news`)
   let articles
+  let selectionReport = null
   try {
-    articles = await fetchArticlesFromPool(userId, newsOpts.keywords, newsOpts.pageSize ?? 5, override)
+    const poolResult = await fetchArticlesFromPool(userId, newsOpts.keywords, newsOpts.pageSize ?? 5, override)
+    articles        = poolResult.articles
+    selectionReport = poolResult.report
     if (articles.length > 0) {
       logger.info(`${userTag} Using ${articles.length} articles from news pool`)
     } else {
@@ -59,7 +62,8 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
     }
   } catch (e) {
     logger.info(`${userTag} Pool unavailable (${e.message}), falling back to live fetch`)
-    articles = await fetchNews(newsOpts)
+    articles        = await fetchNews(newsOpts)
+    selectionReport = { fallback: true, reason: e.message, keywords: newsOpts.keywords || [] }
   }
   if (articles.length === 0) throw new Error('No articles available')
   articles.forEach((a, i) => logger.info(`  ${i+1}. ${a.title}`))
@@ -227,6 +231,21 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
     logger.info(`${userTag} Saved ${mdFilename} to briefings/`)
   } catch (err) {
     logger.warn(`${userTag} Failed to save MD locally: ${err.message}`)
+  }
+
+  // Step 8: 선정 검증 리포트 저장 (briefings/_reports/, 옵시디언 동기화용)
+  try {
+    const { buildSelectionReport } = await import('./selection-report.js')
+    const md = buildSelectionReport({ report: selectionReport, articles, userId, date, dateLabel })
+    const { writeFileSync, mkdirSync } = await import('fs')
+    const { join } = await import('path')
+    const repDir = join(process.cwd(), 'briefings', '_reports')
+    mkdirSync(repDir, { recursive: true })
+    const repName = userId ? `${userId.slice(0,8)}-${date}-report.md` : `${date}-report.md`
+    writeFileSync(join(repDir, repName), md, 'utf8')
+    logger.info(`${userTag} Saved selection report ${repName}`)
+  } catch (err) {
+    logger.warn(`${userTag} Failed to save selection report: ${err.message}`)
   }
 
   logger.info(`${userTag} Done in ${(durationMs/1000).toFixed(1)}s`)

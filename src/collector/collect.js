@@ -1,16 +1,12 @@
 // src/collector/collect.js
 import { config } from '../../config/index.js'
 import { logger } from '../utils/logger.js'
-import { collectFromNewsAPI, collectFromNewsAPIByKeywords } from './sources/newsapi.js'
-import { collectFromRSS } from './sources/rss.js'
+import { collectFromNewsAPI } from './sources/newsapi.js'
+import { collectFromRSS, collectFromGoogleNewsKeywords } from './sources/rss.js'
 import { deduplicateArticles } from './dedup.js'
 
 // NewsAPI top-headlines가 허용하는 유효 카테고리 (그 외 값은 무시)
 const VALID_CATEGORIES = ['business', 'entertainment', 'general', 'health', 'science', 'sports', 'technology']
-
-// 키워드 검색은 키워드당 1회 호출이라 NewsAPI 한도(무료 100/일) 방어를 위해
-// 하루 2회(UTC 6시·18시)만 수행한다.
-const KEYWORD_SEARCH_HOURS = [6, 18]
 
 async function getSupabaseClient() {
   if (!config.supabase.url || !config.supabase.serviceKey) return null
@@ -64,6 +60,14 @@ async function main() {
 
   const tasks     = [ collectFromRSS() ]
   const taskNames = [ 'RSS' ]
+
+  // 유저 관심 키워드 수집 — Google News RSS 검색 (무료·무제한, 매 수집마다 수행)
+  if (prefs.keywords.length > 0) {
+    tasks.push(collectFromGoogleNewsKeywords(prefs.keywords, 10))
+    taskNames.push('GoogleNews-keywords')
+  }
+
+  // NewsAPI 카테고리 수집 (짝수시간만, 429 서킷 브레이커 내장)
   if (shouldRunNewsAPI) {
     tasks.push(collectFromNewsAPI(config.news.apiKey, {
       country:    config.news.country,
@@ -71,17 +75,8 @@ async function main() {
       pageSize:   10,
     }))
     taskNames.push('NewsAPI-categories')
-
-    // 유저 관심 키워드 기반 수집 (키워드별 개별 검색 → 고르게 축적)
-    // 호출 수가 키워드 수만큼이라 하루 2회(UTC 6·18시)만 수행
-    if (prefs.keywords.length > 0 && KEYWORD_SEARCH_HOURS.includes(currentHour)) {
-      tasks.push(collectFromNewsAPIByKeywords(config.news.apiKey, prefs.keywords, 10))
-      taskNames.push('NewsAPI-keywords')
-    } else if (prefs.keywords.length > 0) {
-      logger.info(`[collector] Skipping keyword search (only at UTC ${KEYWORD_SEARCH_HOURS.join(',')}h)`)
-    }
   } else {
-    logger.info('[collector] Skipping NewsAPI on odd hours to conserve rate limits')
+    logger.info('[collector] Skipping NewsAPI categories on odd hours to conserve rate limits')
   }
 
   // 1) 모든 소스에서 병렬 수집

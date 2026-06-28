@@ -11,33 +11,34 @@ async function getClient() {
 }
 
 /**
- * Supabase PostgREST의 `not in` 필터용 값 목록을 안전하게 포맷.
- * 배열을 그대로 넘기면 괄호 없이 직렬화돼 필터가 동작하지 않거나,
- * URL 내 쉼표/괄호 때문에 깨질 수 있으므로 ("v1","v2") 형태로 감싼다.
+ * 단어 경계(\b) 기준 매칭. 대소문자 무시.
+ * 'AI'가 'brain'/'Cain'/'again' 등에 부분 매칭되던 문제를 방지한다.
  */
-function toInList(values) {
-  return `(${values.map(v => `"${String(v).replace(/"/g, '')}"`).join(',')})`
+function wordBoundaryMatch(text, keyword) {
+  const esc = String(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`\\b${esc}\\b`, 'i').test(text)
 }
 
-/** 기사 제목+설명에서 매칭되는 키워드 목록 반환 (대소문자 무시) */
+/** 기사(제목+설명)에서 단어경계로 매칭되는 키워드 목록 */
 function matchedKeywords(article, keywords) {
-  const text = `${article.title || ''} ${article.description || ''}`.toLowerCase()
-  return keywords.filter(k => text.includes(String(k).toLowerCase()))
+  const text = `${article.title || ''} ${article.description || ''}`
+  return keywords.filter(k => wordBoundaryMatch(text, k))
 }
 
 /**
- * news pool에서 최근 24시간 기사를 가져옴. (사용자별로 읽은 기사 제외)
- * 반환: { articles, report }  ← report는 선정 검증 리포트용 메타데이터
+ * news pool에서 최근 24시간 기사를 가져와 선정.
+ *  - 키워드 매칭: 단어경계 기준 (부분문자열 오매칭 방지)
+ *  - 우선순위/다양성: 키워드 입력 순서대로 라운드로빈 (각 키워드 1개씩 번갈아)
+ *  - 부족분: AI 큐레이션 폴백
+ * 반환: { articles, report }
  */
 export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, override = {}) {
   const sb = await getClient()
   if (!sb) throw new Error('Supabase not configured')
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const safeKeywords = keywords || []
-  let finalArticles = []
+  const safeKeywords = (keywords || []).filter(Boolean)
 
-  // 검증 리포트용 메타데이터 (선정 로직에는 영향 없음)
   const report = {
     keywords:             safeKeywords,
     poolTotal:            0,
@@ -46,12 +47,12 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
     stage1Count:          0,
     stage2Count:          0,
     stage2CandidateCount: 0,
-    stage2Method:         'none',   // 'ai' | 'slice' | 'none'
+    stage2Method:         'none',
     selected:             [],
   }
 
-  // 0) 사용자가 과거 7일간 읽은 기사 URL 목록 추출 (중복 방지)
-  let usedUrls = []
+  // 0) 7일간 읽은 기사 URL (중복 방지)
+  const usedSet = new Set()
   if (userId) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const { data: logsData } = await sb
@@ -59,59 +60,61 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
       .select('articles')
       .eq('user_id', userId)
       .gte('created_at', weekAgo)
-
     if (logsData) {
       for (const row of logsData) {
         if (Array.isArray(row.articles)) {
-          for (const a of row.articles) {
-            if (a.url) usedUrls.push(a.url)
-          }
+          for (const a of row.articles) { if (a.url) usedSet.add(a.url) }
         }
       }
     }
   }
-  report.excludedDuplicates = usedUrls.length
+  report.excludedDuplicates = usedSet.size
 
-  // 리포트용: 24h pool 분포 통계 (가벼운 필드만, 선정에는 미사용)
-  try {
-    const { data: poolAll } = await sb
-      .from('a_news_pool')
-      .select('title, description')
-      .gte('collected_at', since)
-    report.poolTotal = poolAll?.length ?? 0
-    for (const k of safeKeywords) {
-      report.keywordDistribution[k] = (poolAll || []).filter(a =>
-        `${a.title || ''} ${a.description || ''}`.toLowerCase().includes(String(k).toLowerCase())
-      ).length
-    }
-  } catch (e) {
-    logger.warn(`[pool-reader] pool stats failed: ${e.message}`)
+  // 1) 24h pool 전체를 한 번 가져와 메모리에서 선정 (단어경계/라운드로빈을 위해)
+  const { data: rawPool, error: poolErr } = await sb
+    .from('a_news_pool')
+    .select('title, description, source_name, url, published_at')
+    .gte('collected_at', since)
+    .order('published_at', { ascending: false })
+    .limit(1000)
+
+  if (poolErr) throw new Error(`pool fetch failed: ${poolErr.message}`)
+
+  const pool = (rawPool || []).filter(a => a.url && !usedSet.has(a.url))
+  report.poolTotal = (rawPool || []).length
+
+  // 키워드별 분포 (단어경계 기준)
+  for (const k of safeKeywords) {
+    report.keywordDistribution[k] = pool.filter(a =>
+      wordBoundaryMatch(`${a.title || ''} ${a.description || ''}`, k)
+    ).length
   }
 
-  // 1) 키워드가 있을 경우 키워드 매칭 기사 먼저 검색 (우선순위 1단계)
+  // 2) 키워드별 라운드로빈 선정 (입력 순서 = 우선순위, 각 키워드 1개씩 번갈아)
+  const selectedUrls = new Set()
+  let finalArticles = []
+
   if (safeKeywords.length > 0) {
-    const orConditions = safeKeywords.flatMap(k => [
-      `title.ilike.%${k}%`,
-      `description.ilike.%${k}%`
-    ]).join(',')
+    const buckets = safeKeywords.map(kw => ({
+      kw,
+      articles: pool.filter(a => wordBoundaryMatch(`${a.title || ''} ${a.description || ''}`, kw)),
+    }))
 
-    let query = sb
-      .from('a_news_pool')
-      .select('title, description, source_name, url, published_at')
-      .gte('collected_at', since)
-      .or(orConditions)
-      .order('published_at', { ascending: false })
-      .limit(limit)
-
-    if (usedUrls.length > 0) {
-      query = query.not('url', 'in', toInList(usedUrls))
+    let progressed = true
+    while (finalArticles.length < limit && progressed) {
+      progressed = false
+      for (const bucket of buckets) {
+        if (finalArticles.length >= limit) break
+        const next = bucket.articles.find(a => !selectedUrls.has(a.url))
+        if (next) {
+          selectedUrls.add(next.url)
+          finalArticles.push(next)
+          progressed = true
+        }
+      }
     }
-
-    const { data: kwData, error: kwError } = await query
-
-    if (kwError) logger.warn(`[pool-reader] Keyword search failed: ${kwError.message}`)
-    else finalArticles = kwData || []
   }
+
   report.stage1Count = finalArticles.length
   for (const a of finalArticles) {
     report.selected.push({
@@ -123,29 +126,12 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
     })
   }
 
-  // 2) 기사가 부족하면 AI 기반의 최정예 핫이슈 뉴스로 채움 (우선순위 2단계 - AI 필터)
+  // 3) 부족분 AI 큐레이션 (최신 후보 25개 중 선별)
   if (finalArticles.length < limit) {
     const remaining = limit - finalArticles.length
-    const excludeUrls = finalArticles.map(a => a.url)
-    const allExclude = [...usedUrls, ...excludeUrls]
+    const candidates = pool.filter(a => !selectedUrls.has(a.url)).slice(0, 25)
 
-    // 인기도 엄선을 위해 5배수(기본 25개)의 최신 기사 후보군을 넉넉히 가져옵니다
-    const candidateLimit = 25
-    let query = sb
-      .from('a_news_pool')
-      .select('title, description, source_name, url, published_at')
-      .gte('collected_at', since)
-      .order('published_at', { ascending: false })
-      .limit(candidateLimit)
-
-    if (allExclude.length > 0) {
-      query = query.not('url', 'in', toInList(allExclude))
-    }
-
-    const { data: candidates, error: genError } = await query
-    if (genError) {
-      logger.warn(`[pool-reader] Fallback candidate search failed: ${genError.message}`)
-    } else if (candidates && candidates.length > 0) {
+    if (candidates.length > 0) {
       report.stage2CandidateCount = candidates.length
       logger.info(`[pool-reader] Fetched ${candidates.length} candidates. Selecting top ${remaining} via AI...`)
 
@@ -160,8 +146,8 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
       let picked = []
       try {
         const { filterTopArticles } = await import('../providers/llm.js')
-        const hotArticles = await filterTopArticles(normalizedCandidates, remaining, override)
-        picked = hotArticles.map(a => ({
+        const hot = await filterTopArticles(normalizedCandidates, remaining, override)
+        picked = hot.map(a => ({
           title:        a.title,
           description:  a.description,
           source_name:  a.source,
@@ -170,7 +156,7 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
         }))
         report.stage2Method = 'ai'
       } catch (err) {
-        logger.warn(`[pool-reader] AI Curation failed: ${err.message}. Falling back to standard slicing.`)
+        logger.warn(`[pool-reader] AI Curation failed: ${err.message}. Falling back to slicing.`)
         picked = candidates.slice(0, remaining)
         report.stage2Method = 'slice'
       }

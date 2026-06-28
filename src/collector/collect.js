@@ -8,6 +8,10 @@ import { deduplicateArticles } from './dedup.js'
 // NewsAPI top-headlines가 허용하는 유효 카테고리 (그 외 값은 무시)
 const VALID_CATEGORIES = ['business', 'entertainment', 'general', 'health', 'science', 'sports', 'technology']
 
+// 키워드 검색은 키워드당 1회 호출이라 NewsAPI 한도(무료 100/일) 방어를 위해
+// 하루 2회(UTC 6시·18시)만 수행한다.
+const KEYWORD_SEARCH_HOURS = [6, 18]
+
 async function getSupabaseClient() {
   if (!config.supabase.url || !config.supabase.serviceKey) return null
   const { createClient } = await import('@supabase/supabase-js')
@@ -68,10 +72,13 @@ async function main() {
     }))
     taskNames.push('NewsAPI-categories')
 
-    // 유저 관심 키워드 기반 수집 (산업/관심 주제 기사 축적)
-    if (prefs.keywords.length > 0) {
-      tasks.push(collectFromNewsAPIByKeywords(config.news.apiKey, prefs.keywords, 20))
+    // 유저 관심 키워드 기반 수집 (키워드별 개별 검색 → 고르게 축적)
+    // 호출 수가 키워드 수만큼이라 하루 2회(UTC 6·18시)만 수행
+    if (prefs.keywords.length > 0 && KEYWORD_SEARCH_HOURS.includes(currentHour)) {
+      tasks.push(collectFromNewsAPIByKeywords(config.news.apiKey, prefs.keywords, 10))
       taskNames.push('NewsAPI-keywords')
+    } else if (prefs.keywords.length > 0) {
+      logger.info(`[collector] Skipping keyword search (only at UTC ${KEYWORD_SEARCH_HOURS.join(',')}h)`)
     }
   } else {
     logger.info('[collector] Skipping NewsAPI on odd hours to conserve rate limits')

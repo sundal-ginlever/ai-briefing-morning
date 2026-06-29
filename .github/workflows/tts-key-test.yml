@@ -1,0 +1,33 @@
+name: TTS Key Test
+
+# 임시 워크플로: AI_News의 GEMINI_API_KEY secret으로 Gemini TTS 가용성 검증.
+# 검증 후 삭제 예정.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test Gemini TTS with secret key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "RESULT: NO_KEY — GEMINI_API_KEY secret이 설정되어 있지 않음"
+            exit 0
+          fi
+          RESP=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${GEMINI_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            -d '{"contents":[{"parts":[{"text":"Say: test"}]}],"generationConfig":{"responseModalities":["AUDIO"],"speechConfig":{"voiceConfig":{"prebuiltVoiceConfig":{"voiceName":"Kore"}}}}}')
+          if echo "$RESP" | grep -q '"inlineData"'; then
+            echo "RESULT: SUCCESS — Gemini TTS 사용가능 (audio 정상 반환)"
+            echo "$RESP" | grep -oE '"mimeType": *"[^"]*"' | head -1
+          elif echo "$RESP" | grep -qE 'PerDay|RESOURCE_EXHAUSTED'; then
+            echo "RESULT: QUOTA_EXCEEDED — 쿼터 소진"
+            echo "$RESP" | grep -oE '"status": *"[^"]*"' | head -1
+          else
+            echo "RESULT: ERROR"
+            echo "$RESP" | grep -oE '"(status|message)": *"[^"]*"' | head -3
+          fi

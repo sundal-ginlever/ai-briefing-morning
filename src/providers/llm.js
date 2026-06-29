@@ -49,8 +49,8 @@ Pacing & Rhythm:
 1. Use frequent commas (,), periods (.), ellipses (...), and em-dashes (—) to generate natural, conversational breathing pauses and a relaxed, comfortable rhythm.
 2. Break long sentences into multiple short, punchy, conversational spoken-word phrases.
 Natural Pronunciation: Write exactly as the text should be spoken aloud. Spell out any foreign acronyms, numbers, or technical terms phonetically in ${language} to prevent the text-to-speech engine from reading them out letter-by-letter or sounding robotic (e.g., if ${language} is Korean, write "에이아이" or "인공지능" instead of "AI", "엔비디아" instead of "NVIDIA", "일조 원" instead of "1조원").
-IMPORTANT: You MUST insert the exact text "[PAUSE]" on its own line between every news story to allow for a 1-second audio break.
-Do NOT include stage directions, sound effects, or timestamps.
+Separate each news story with a short, natural spoken transition (e.g. "Next up...", "In other news...", "Meanwhile...") so it flows smoothly as one continuous broadcast.
+Do NOT include stage directions, sound effects, timestamps, or bracketed markers like [PAUSE].
 Output the script text only, nothing else.`
 
   if (!customPrompt) return basePrompt

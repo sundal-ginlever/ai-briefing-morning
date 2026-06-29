@@ -15,7 +15,7 @@ function optional(key, defaultValue = '') {
 }
 
 const VALID_LLM_PROVIDERS = ['openai', 'gemini', 'ollama']
-const VALID_TTS_PROVIDERS = ['openai', 'google', 'none']
+const VALID_TTS_PROVIDERS = ['openai', 'google', 'gemini', 'none']
 const VALID_STORAGE       = ['supabase', 'local']
 const VALID_EMAIL         = ['smtp', 'none']
 
@@ -48,6 +48,7 @@ export const config = {
     provider: ttsProvider,
     openai:  { apiKey: optional('OPENAI_API_KEY') },
     google:  { apiKey: optional('GOOGLE_API_KEY', process.env.GEMINI_API_KEY) },
+    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_TTS_MODEL', 'gemini-3.1-flash-tts-preview'), voice: optional('GEMINI_TTS_VOICE', 'Kore') },
     voice:    optional('TTS_VOICE', 'coral'),
     speed:    parseFloat(optional('TTS_SPEED', '0.95')),
   },

@@ -48,7 +48,7 @@ export const config = {
     provider: ttsProvider,
     openai:  { apiKey: optional('OPENAI_API_KEY') },
     google:  { apiKey: optional('GOOGLE_API_KEY', process.env.GEMINI_API_KEY) },
-    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_TTS_MODEL', 'gemini-3.1-flash-tts-preview'), voice: optional('GEMINI_TTS_VOICE', 'Kore') },
+    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_TTS_MODEL', 'gemini-3.1-flash-tts-preview'), voice: optional('GEMINI_TTS_VOICE', 'Sulafat') },
     voice:    optional('TTS_VOICE', 'coral'),
     speed:    parseFloat(optional('TTS_SPEED', '0.95')),
   },

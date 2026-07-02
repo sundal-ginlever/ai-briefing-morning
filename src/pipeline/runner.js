@@ -80,8 +80,8 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
 
   // Step 3 — 단일 호출 TTS (provider가 전체 스크립트를 한 번에 합성)
   logger.info(`${userTag} [3/6] Synthesizing audio`)
-  // 혹시 남아있을 [PAUSE] 토큰은 자연스러운 멈춤으로 치환 후 한 번에 합성
-  const ttsScript  = script.replace(/\[PAUSE\]/gi, ' ... ').replace(/[ \t]{2,}/g, ' ').trim()
+  // 혹시 남아있을 [PAUSE] 토큰은 마침표로 치환(말줄임표는 Gemini TTS가 속삭이는 pause로 과장 해석함)
+  const ttsScript  = script.replace(/\[PAUSE\]/gi, '. ').replace(/[ \t]{2,}/g, ' ').trim()
   const audioBuffer = await synthesizeSpeech(ttsScript, override)
 
   // Step 4

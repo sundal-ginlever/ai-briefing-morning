@@ -40,8 +40,10 @@ async function callGeminiTTS(script, voice) {
   const model    = config.tts.gemini.model
   const useVoice = OPENAI_VOICES.has(voice) ? config.tts.gemini.voice : (voice || config.tts.gemini.voice)
 
-  // 단일 호출: 전체 브리핑을 한 번에. pause는 자연어 지시로 처리.
-  const prompt = `Read the following morning news briefing aloud in a warm, friendly radio-anchor voice at a natural, moderate pace. Pause briefly between stories.\n\n${script}`
+  // 단일 호출: 전체 브리핑을 한 번에.
+  // 스타일 형용사(warm/friendly 등)나 pause 지시는 Gemini native TTS가 과장해서
+  // 속삭이듯 늘어지는 톤으로 해석하는 경향이 있어 최소한의 담백한 지시만 사용한다.
+  const prompt = `Read the following text aloud clearly at a normal, steady speaking pace, like a standard news broadcast.\n\n${script}`
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,

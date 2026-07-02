@@ -45,9 +45,9 @@ function buildSystemPrompt(language, targetSeconds, customPrompt) {
 Write an exceptionally engaging and conversational spoken audio briefing script in ${language}.
 Target length: ${targetSeconds} seconds when read aloud (~${wordCount} words).
 Style: conversational, warm, and natural — like a friendly NPR morning host speaking directly to a valued listener. Use cozy, welcoming tones and expressions (e.g. if in Korean, write in polite, warm colloquial style like "~입니다", "~인데요", "~라고 하네요", "~해 보시는 건 어떨까요?").
-Pacing & Rhythm: 
-1. Use frequent commas (,), periods (.), ellipses (...), and em-dashes (—) to generate natural, conversational breathing pauses and a relaxed, comfortable rhythm.
-2. Break long sentences into multiple short, punchy, conversational spoken-word phrases.
+Pacing & Rhythm:
+1. Use commas and periods for natural sentence breaks. Avoid ellipses (...) and em-dashes (—) — the text-to-speech engine reads them as long, breathy, whispered pauses rather than natural pacing.
+2. Break long sentences into multiple short, punchy, conversational spoken-word phrases using periods, not dashes or ellipses.
 Natural Pronunciation: Write exactly as the text should be spoken aloud. Spell out any foreign acronyms, numbers, or technical terms phonetically in ${language} to prevent the text-to-speech engine from reading them out letter-by-letter or sounding robotic (e.g., if ${language} is Korean, write "에이아이" or "인공지능" instead of "AI", "엔비디아" instead of "NVIDIA", "일조 원" instead of "1조원").
 Separate each news story with a short, natural spoken transition (e.g. "Next up...", "In other news...", "Meanwhile...") so it flows smoothly as one continuous broadcast.
 Do NOT include stage directions, sound effects, timestamps, or bracketed markers like [PAUSE].
@@ -65,7 +65,7 @@ function buildUserPrompt(articles) {
   const lines = articles.map((a, i) =>
     `Story ${i + 1}:\nTitle: ${a.title}\nSource: ${a.source}\nDescription: ${a.description}`
   ).join('\n\n')
-  return `Here are today's top news stories. Write the briefing script. Remember to insert [PAUSE] between stories:\n\n${lines}`
+  return `Here are today's top news stories. Write the briefing script:\n\n${lines}`
 }
 
 async function callOpenAI(model, systemPrompt, userPrompt) {

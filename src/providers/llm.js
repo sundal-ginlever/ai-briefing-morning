@@ -50,6 +50,7 @@ Pacing & Rhythm:
 2. Break long sentences into multiple short, punchy, conversational spoken-word phrases using periods, not dashes or ellipses.
 Natural Pronunciation: Write exactly as the text should be spoken aloud. Spell out any foreign acronyms, numbers, or technical terms phonetically in ${language} to prevent the text-to-speech engine from reading them out letter-by-letter or sounding robotic (e.g., if ${language} is Korean, write "에이아이" or "인공지능" instead of "AI", "엔비디아" instead of "NVIDIA", "일조 원" instead of "1조원").
 Separate each news story with a short, natural spoken transition (e.g. "Next up...", "In other news...", "Meanwhile...") so it flows smoothly as one continuous broadcast.
+Write each story as its own paragraph, with a blank line between paragraphs (the intro greeting and closing sign-off may each be their own paragraph too).
 Do NOT include stage directions, sound effects, timestamps, or bracketed markers like [PAUSE].
 Output the script text only, nothing else.`
 

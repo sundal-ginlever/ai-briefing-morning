@@ -48,7 +48,16 @@ export const config = {
     provider: ttsProvider,
     openai:  { apiKey: optional('OPENAI_API_KEY') },
     google:  { apiKey: optional('GOOGLE_API_KEY', process.env.GEMINI_API_KEY) },
-    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_TTS_MODEL', 'gemini-3.1-flash-tts-preview'), voice: optional('GEMINI_TTS_VOICE', 'Sulafat') },
+    gemini:  {
+      apiKey: optional('GEMINI_API_KEY'),
+      model:  optional('GEMINI_TTS_MODEL', 'gemini-3.1-flash-tts-preview'),
+      voice:  optional('GEMINI_TTS_VOICE', 'Sulafat'),
+      // 단락별 멀티보이스 로테이션 (입력 순서대로 순환)
+      voices: optional('GEMINI_TTS_VOICES', 'Sulafat,Fenrir,Erinome,Sadachbia,Zephyr')
+        .split(',').map(v => v.trim()).filter(Boolean),
+      // 무료티어 3 RPM 방어용 세그먼트 간 대기 (ms)
+      segmentDelayMs: parseInt(optional('GEMINI_TTS_SEGMENT_DELAY_MS', '21000'), 10),
+    },
     voice:    optional('TTS_VOICE', 'coral'),
     speed:    parseFloat(optional('TTS_SPEED', '0.95')),
   },

@@ -87,6 +87,11 @@ export async function sendFailureAlert({ userId, errorMessage, date }) {
 
 // ─── Templates ───────────────────────────────────────────────────────────────
 
+/** Supabase Storage 다운로드 강제 파라미터 부착 (URL에 쿼리 유무 모두 대응) */
+function withDownloadParam(url) {
+  return `${url}${url.includes('?') ? '&' : '?'}download=`
+}
+
 function buildEmailHTML({ audioUrl, script, headlines, date }) {
   const headlineItems = headlines
     .map(h => `<li style="margin-bottom:6px">${h}</li>`)
@@ -94,7 +99,7 @@ function buildEmailHTML({ audioUrl, script, headlines, date }) {
 
   const audioSection = audioUrl && !audioUrl.startsWith('file://')
     ? `<div style="margin:24px 0;text-align:center">
-        <a href="${audioUrl}&download="
+        <a href="${withDownloadParam(audioUrl)}"
            style="background:#0f172a;color:#fff;padding:14px 32px;
                   border-radius:8px;text-decoration:none;font-size:16px;
                   font-weight:600;display:inline-block;box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1)">
@@ -146,7 +151,7 @@ function buildEmailText({ audioUrl, script, headlines, date }) {
     ...headlines.map((h, i) => `${i + 1}. ${h}`),
     '',
     audioUrl && !audioUrl.startsWith('file://')
-      ? `Download: ${audioUrl}&download=`
+      ? `Download: ${withDownloadParam(audioUrl)}`
       : '(Audio not available)',
     '',
     '--- Script ---',

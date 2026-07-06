@@ -9,7 +9,7 @@
 //   POST /api/run               → 수동 실행 (즉시)
 //   GET  /api/admin/users       → 전체 사용자 목록 (admin only)
 
-import { getUserSettings, updateUserSettings, getBriefingHistory } from './users.js'
+import { getUserSettings, updateUserSettings, getBriefingHistory, settingsToOverride } from './users.js'
 import { getSupabase }   from './supabase.js'
 import { runPipeline, runScheduledUsers } from '../pipeline/runner.js'
 import { logger }        from '../utils/logger.js'
@@ -80,12 +80,16 @@ async function readBody(req) {
 const userRunning = new Set()
 const rateLimitCache = new Map()
 
+const RATE_LIMIT_WINDOW_MS = 60 * 1000
+
 function isRateLimited(userId) {
   const now = Date.now()
-  const lastRun = rateLimitCache.get(userId)
-  if (lastRun && now - lastRun < 60 * 1000) { // 1 minute limit
-    return true
+  // 만료된 항목 정리 (Map 무한 성장 방지)
+  for (const [id, ts] of rateLimitCache) {
+    if (now - ts > RATE_LIMIT_WINDOW_MS) rateLimitCache.delete(id)
   }
+  const lastRun = rateLimitCache.get(userId)
+  if (lastRun && now - lastRun < RATE_LIMIT_WINDOW_MS) return true
   rateLimitCache.set(userId, now)
   return false
 }
@@ -124,14 +128,15 @@ async function handlePostRun(req, res, url, user) {
   if (userRunning.has(user.id)) return err(res, 409, 'Pipeline already running for your account')
   if (isRateLimited(user.id)) return err(res, 429, 'Too Many Requests. Please wait 1 minute before running again.')
 
+  // 설정 조회는 응답 전에 수행 — 여기서 실패하면 정상적으로 500 반환.
+  // (202 발송 후 실패하면 락이 안 풀리고 headers-already-sent 오류가 남)
+  const settings = await getUserSettings(user.id)
+  const override = settingsToOverride(settings)
+  if (!override.email.to) override.email.to = user.email
+
   json(res, 202, { status: 'accepted', message: 'Pipeline started for your account' })
 
   userRunning.add(user.id)
-  const settings  = await getUserSettings(user.id)
-  const { settingsToOverride } = await import('./users.js')
-  const override  = settingsToOverride(settings)
-  if (!override.email.to) override.email.to = user.email
-
   runPipeline({ userId: user.id, override })
     .then(() => logger.info(`[api] Manual run done for userId=${user.id}`))
     .catch(e  => logger.error(`[api] Manual run failed: ${e.message}`))

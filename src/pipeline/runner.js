@@ -48,7 +48,7 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
   const ttsOpts = override.tts ?? {}
 
   // Step 1 — 뉴스 수집 (pool 우선, 폴백: 실시간 호출)
-  logger.info(`${userTag} [1/6] Fetching news`)
+  logger.info(`${userTag} [1/8] Fetching news`)
   let articles
   let selectionReport = null
   try {
@@ -74,27 +74,27 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
   }
 
   // Step 2
-  logger.info(`${userTag} [2/6] Generating script`)
+  logger.info(`${userTag} [2/8] Generating script`)
   const script = await generateScript(articles, override)
   logger.info(`${userTag} Script: "${script.slice(0,80)}..."`)
 
-  // Step 3 — 단일 호출 TTS (provider가 전체 스크립트를 한 번에 합성)
-  logger.info(`${userTag} [3/6] Synthesizing audio`)
+  // Step 3 — TTS 합성 (gemini는 provider 내부에서 단락별 멀티보이스 분할 합성)
+  logger.info(`${userTag} [3/8] Synthesizing audio`)
   // 혹시 남아있을 [PAUSE] 토큰은 마침표로 치환(말줄임표는 Gemini TTS가 속삭이는 pause로 과장 해석함)
   const ttsScript  = script.replace(/\[PAUSE\]/gi, '. ').replace(/[ \t]{2,}/g, ' ').trim()
   const audioBuffer = await synthesizeSpeech(ttsScript, override)
 
   // Step 4
-  logger.info(`${userTag} [4/6] Saving audio`)
+  logger.info(`${userTag} [4/8] Saving audio`)
   const filename = userId ? `${userId.slice(0,8)}-${date}.mp3` : `${date}.mp3`
   const audioUrl = await saveAudio(audioBuffer, filename)
 
   // Step 5
-  logger.info(`${userTag} [5/6] Sending email to ${emailTo}`)
+  logger.info(`${userTag} [5/8] Sending email to ${emailTo}`)
   await sendBriefingEmail({ audioUrl, script, headlines: articles.map(a => a.title), date: dateLabel, to: emailTo })
 
   // Step 6
-  logger.info(`${userTag} [6/7] Saving log`)
+  logger.info(`${userTag} [6/8] Saving log`)
   const durationMs = Date.now() - startTime
   await saveBriefingLog({ userId, date, script, audioUrl, articles,
     llmProvider: override.llm?.provider ?? config.llm.provider,
@@ -102,7 +102,7 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
     durationMs })
 
   // Step 7: GitHub 동기화를 위한 로컬 MD 저장 (옵시디언 연동용)
-  logger.info(`${userTag} [7/7] Saving MD locally for GitHub Sync`)
+  logger.info(`${userTag} [7/8] Saving MD locally for GitHub Sync`)
   const mdFilename = userId ? `${userId.slice(0,8)}-${date}.md` : `${date}.md`
   try {
     const { writeFileSync, mkdirSync } = await import('fs')
@@ -116,6 +116,7 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
   }
 
   // Step 8: 선정 검증 리포트 저장 (briefings/_reports/, 옵시디언 동기화용)
+  logger.info(`${userTag} [8/8] Saving selection report`)
   try {
     const { buildSelectionReport } = await import('./selection-report.js')
     const md = buildSelectionReport({ report: selectionReport, articles, userId, date, dateLabel })

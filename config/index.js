@@ -52,9 +52,11 @@ export const config = {
       apiKey: optional('GEMINI_API_KEY'),
       model:  optional('GEMINI_TTS_MODEL', 'gemini-3.1-flash-tts-preview'),
       voice:  optional('GEMINI_TTS_VOICE', 'Sulafat'),
-      // 단락별 멀티보이스 로테이션 (입력 순서대로 순환)
+      // 단락별 멀티보이스 로테이션 (입력 순서대로 순환, 마지막 보이스가 마무리 담당)
       voices: optional('GEMINI_TTS_VOICES', 'Sulafat,Fenrir,Erinome,Sadachbia,Zephyr')
         .split(',').map(v => v.trim()).filter(Boolean),
+      // 세그먼트 최대 길이(자). 초과 단락은 문장 경계로 분할해 휘파람 드리프트 방지
+      maxSegmentChars: parseInt(optional('GEMINI_TTS_MAX_SEGMENT_CHARS', '400'), 10),
       // 무료티어 3 RPM 방어용 세그먼트 간 대기 (ms)
       segmentDelayMs: parseInt(optional('GEMINI_TTS_SEGMENT_DELAY_MS', '21000'), 10),
     },

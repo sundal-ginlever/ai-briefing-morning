@@ -50,26 +50,31 @@ async function callGeminiTTS(script, voice) {
   const apiKey = config.tts.gemini.apiKey
   if (!apiKey) throw new Error('GEMINI_API_KEY is missing for Gemini TTS')
 
-  const model = config.tts.gemini.model
+  const model  = config.tts.gemini.model
+  const voices = config.tts.gemini.voices
 
   // 보이스 로테이션: 유저 지정 보이스가 선두, 이어서 목록의 나머지 보이스 순환
   const primary  = (!voice || OPENAI_VOICES.has(voice)) ? config.tts.gemini.voice : voice
-  const rotation = [primary, ...config.tts.gemini.voices.filter(v => v.toLowerCase() !== primary.toLowerCase())]
+  const rotation = [primary, ...voices.filter(v => v.toLowerCase() !== primary.toLowerCase())]
 
-  const segments = splitIntoSegments(script, rotation.length)
-  logger.info(`[tts:gemini] ${segments.length} segment(s), voices=[${rotation.slice(0, segments.length).join(', ')}]`)
+  // 각 단락(기사)이 독립 세그먼트. 긴 단락은 글자수 기준으로 문장 분할됨.
+  const segments = splitIntoSegments(script, config.tts.gemini.maxSegmentChars)
+  // 마무리(마지막 세그먼트)는 목록의 마지막 보이스(기본 Zephyr)가 끝까지 담당
+  const closingVoice = segments.length >= 2 ? voices[voices.length - 1] : null
+  const segVoices = assignVoices(segments.length, rotation, closingVoice)
+  logger.info(`[tts:gemini] ${segments.length} segment(s), voices=[${segVoices.join(', ')}]`)
 
   const pcmParts = []
   for (let i = 0; i < segments.length; i++) {
     // 무료티어 3 RPM 방어 — 첫 세그먼트 이후부터 간격 유지
     if (i > 0 && config.tts.gemini.segmentDelayMs > 0) await sleep(config.tts.gemini.segmentDelayMs)
 
-    const segVoice = rotation[i % rotation.length]
+    const segVoice = segVoices[i]
     const pcm = await withRetry(
       () => synthesizeGeminiSegment(segments[i], segVoice, model, apiKey),
       { label: `tts:gemini:seg${i + 1}/${segments.length}(${segVoice})`, maxAttempts: 3, baseDelayMs: 10000, maxDelayMs: 30000, retryIf: isRetryable }
     )
-    logger.info(`[tts:gemini] segment ${i + 1}/${segments.length} voice=${segVoice} PCM ${(pcm.length / 1024).toFixed(1)}KB`)
+    logger.info(`[tts:gemini] segment ${i + 1}/${segments.length} voice=${segVoice} ${segments[i].length}chars PCM ${(pcm.length / 1024).toFixed(1)}KB`)
 
     if (pcmParts.length > 0) pcmParts.push(SEGMENT_SILENCE)
     pcmParts.push(pcm)
@@ -80,23 +85,54 @@ async function callGeminiTTS(script, voice) {
   return pcmToMp3(merged)
 }
 
-/** 스크립트를 최대 maxSegments개의 단락 그룹으로 분할 (export는 테스트용) */
-export function splitIntoSegments(script, maxSegments) {
-  // 1) 빈 줄 기준 단락 분할
-  let parts = script.split(/\n\s*\n+/).map(s => s.trim()).filter(Boolean)
+/**
+ * 스크립트를 세그먼트로 분할. (export는 테스트용)
+ *  - 빈 줄 기준 단락 분할 후 병합하지 않음 → 각 기사가 독립 세그먼트
+ *  - maxChars 초과 단락만 문장 경계로 균등 분할 → 긴 단락 휘파람 드리프트 방지
+ */
+export function splitIntoSegments(script, maxChars) {
+  const paras = script.split(/\n\s*\n+/).map(s => s.trim()).filter(Boolean)
 
-  // 2) 단락 구분이 없으면 문장 단위로 등분
-  if (parts.length === 1) {
-    const sentences = parts[0].match(/[^.!?]+[.!?]+["')\]]*\s*/g) || [parts[0]]
-    parts = groupEvenly(sentences, Math.min(maxSegments, sentences.length)).map(g => g.join('').trim())
+  const segments = []
+  for (const para of paras) {
+    if (para.length <= maxChars) {
+      segments.push(para)
+      continue
+    }
+    // 긴 단락 → 문장 단위로 분해 후 maxChars에 맞게 그룹 등분
+    const sentences = para.match(/[^.!?]+[.!?]+["')\]]*\s*/g)?.map(s => s.trim()).filter(Boolean) || [para]
+    const parts = Math.min(Math.max(2, Math.ceil(para.length / maxChars)), sentences.length)
+    for (const group of groupEvenly(sentences, parts)) {
+      segments.push(group.join(' ').trim())
+    }
   }
 
-  // 3) 단락이 보이스 수보다 많으면 인접 단락을 묶어 압축
-  if (parts.length > maxSegments) {
-    parts = groupEvenly(parts, maxSegments).map(g => g.join('\n\n'))
-  }
+  return segments.filter(Boolean)
+}
 
-  return parts.filter(Boolean)
+/**
+ * 세그먼트별 보이스 배정. (export는 테스트용)
+ *  - rotation을 순환 배정하되 인접 세그먼트가 같은 보이스가 되지 않도록 보정
+ *  - closingVoice가 있으면 마지막 세그먼트는 해당 보이스 고정(마무리 일관성)
+ */
+export function assignVoices(count, rotation, closingVoice = null) {
+  const out = []
+  for (let i = 0; i < count; i++) {
+    const isLast = i === count - 1
+    let pick = (isLast && closingVoice) ? closingVoice : rotation[i % rotation.length]
+    const prev = out[i - 1]
+    if (prev && pick === prev) {
+      if (isLast) {
+        // 마무리 보이스는 유지하고 직전 세그먼트 색을 바꿔 중복 해소
+        const alt = rotation.find(v => v !== pick && v !== out[i - 2])
+        if (alt) out[i - 1] = alt
+      } else {
+        pick = rotation.find(v => v !== prev) ?? pick
+      }
+    }
+    out.push(pick)
+  }
+  return out
 }
 
 /** items를 n개 그룹으로 최대한 균등하게 나눔 (순서 유지) */

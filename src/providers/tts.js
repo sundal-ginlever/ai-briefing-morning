@@ -87,25 +87,40 @@ async function callGeminiTTS(script, voice) {
 
 /**
  * 스크립트를 세그먼트로 분할. (export는 테스트용)
- *  - 빈 줄 기준 단락 분할 후 병합하지 않음 → 각 기사가 독립 세그먼트
- *  - maxChars 초과 단락만 문장 경계로 균등 분할 → 긴 단락 휘파람 드리프트 방지
+ * Gemini TTS 무료티어는 gemini-3.1-flash-tts 모델에 하루 10회 호출 한도가 있어
+ * (GenerateRequestsPerDayPerProjectPerModel-FreeTier), 세그먼트=API 호출 수를
+ * 최소화해야 한다. 그렇다고 단락을 개수 기준으로 압축하면(구버전) 두 기사가
+ * 우연히 합쳐져 다시 긴 단락 휘파람 드리프트가 재발하므로,
+ * "글자수 예산(maxChars) 안에서만 인접 단락을 병합"하는 빈패킹으로 둘 다 해결한다:
+ *  - 이미 maxChars를 넘는 단락만 문장 경계로 쪼갬 (각 조각은 항상 maxChars 이하)
+ *  - 그 다음 조각들을 앞에서부터 그리디하게 이어붙이되, 누적 길이가 maxChars를
+ *    넘기 직전까지만 병합 → 어떤 세그먼트도 maxChars를 넘지 않음(음질 보장) +
+ *    짧은 단락끼리는 합쳐져서 호출 수가 대폭 줄어듦(쿼터 보장)
  */
 export function splitIntoSegments(script, maxChars) {
   const paras = script.split(/\n\s*\n+/).map(s => s.trim()).filter(Boolean)
 
-  const segments = []
+  // 1) maxChars 초과 단락만 문장 경계로 잘게 쪼갬 (각 조각 ≤ maxChars)
+  const units = []
   for (const para of paras) {
-    if (para.length <= maxChars) {
-      segments.push(para)
-      continue
-    }
-    // 긴 단락 → 문장 단위로 분해 후 maxChars에 맞게 그룹 등분
+    if (para.length <= maxChars) { units.push(para); continue }
     const sentences = para.match(/[^.!?]+[.!?]+["')\]]*\s*/g)?.map(s => s.trim()).filter(Boolean) || [para]
-    const parts = Math.min(Math.max(2, Math.ceil(para.length / maxChars)), sentences.length)
-    for (const group of groupEvenly(sentences, parts)) {
-      segments.push(group.join(' ').trim())
+    let chunk = ''
+    for (const s of sentences) {
+      if (chunk && chunk.length + 1 + s.length > maxChars) { units.push(chunk); chunk = s }
+      else chunk = chunk ? `${chunk} ${s}` : s
     }
+    if (chunk) units.push(chunk)
   }
+
+  // 2) 조각들을 maxChars 예산 안에서 그리디하게 병합 (세그먼트=API 호출 수 최소화)
+  const segments = []
+  let current = ''
+  for (const u of units) {
+    if (current && current.length + 2 + u.length > maxChars) { segments.push(current); current = u }
+    else current = current ? `${current}\n\n${u}` : u
+  }
+  if (current) segments.push(current)
 
   return segments.filter(Boolean)
 }
@@ -133,18 +148,6 @@ export function assignVoices(count, rotation, closingVoice = null) {
     out.push(pick)
   }
   return out
-}
-
-/** items를 n개 그룹으로 최대한 균등하게 나눔 (순서 유지) */
-function groupEvenly(items, n) {
-  const groups = []
-  let start = 0
-  for (let i = 0; i < n && start < items.length; i++) {
-    const size = Math.ceil((items.length - start) / (n - i))
-    groups.push(items.slice(start, start + size))
-    start += size
-  }
-  return groups
 }
 
 /** 단일 세그먼트를 Gemini TTS로 합성해 PCM(L16 24kHz mono) 버퍼 반환 */

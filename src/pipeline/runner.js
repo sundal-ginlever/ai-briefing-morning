@@ -29,6 +29,13 @@ const targetUser = process.argv.find(a => a.startsWith('--user='))?.split('=')[1
 // ─── Phase 3: 동시성 제어 상수 ──────────────────────────────────────────────
 const MAX_CONCURRENCY = parseInt(process.env.MAX_CONCURRENCY ?? '5', 10)
 
+// 예약 시각보다 몇 시간까지 늦게 실행돼도 따라잡기(catch-up)를 허용할지.
+// GitHub Actions는 cron이 '30 */2 * * *'(2시간)여도 부하 시 예약 실행을 상시 누락시켜
+// 실측 간격이 3.5~4시간, 때론 6시간 이상 벌어진다. 허용치가 실제 간격보다 좁으면
+// 그 공백이 배송 창을 통째로 삼켜 그날 브리핑이 통으로 누락된다(2026-08-06 사례).
+// 중복 발송은 hasLogForDate가 막으므로 넉넉히 잡는 편이 안전하다.
+const CATCHUP_HOURS = parseInt(process.env.SCHEDULE_CATCHUP_HOURS ?? '6', 10)
+
 // ─── 단일 사용자 파이프라인 ───────────────────────────────────────────────────
 
 export async function runPipeline({ userId = null, override = {}, forceDate = null } = {}) {
@@ -197,10 +204,10 @@ export async function runScheduledUsers() {
     const userTz = row.timezone || 'Asia/Seoul'
     const date   = todaySlug(userTz) // 사용자 시간대 기준 날짜 계산
     
-    // 0~3 시간 이내로 늦은 경우 허용 (예: 스케줄이 23시이고 현재가 1시이면 diff=2)
+    // CATCHUP_HOURS 이내로 늦은 경우 허용 (예: 스케줄이 23시이고 현재가 1시이면 diff=2)
     const diffHours = (hourUtc - row.schedule_hour_utc + 24) % 24
-    
-    if (diffHours >= 0 && diffHours <= 3) {
+
+    if (diffHours >= 0 && diffHours <= CATCHUP_HOURS) {
       const alreadyDone = await hasLogForDate(userId, date)
       if (!alreadyDone) {
         usersToRun.push({ ...row, calculatedDate: date })
@@ -209,7 +216,7 @@ export async function runScheduledUsers() {
       }
     } else {
       // 3시간 이상 차이나면 실행할 시간이 아님
-      logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — schedule=${row.schedule_hour_utc} UTC, now=${hourUtc} UTC (diff=${diffHours}h)`)
+      logger.info(`[scheduler] Skipping userId=${userId.slice(0,8)} — schedule=${row.schedule_hour_utc} UTC, now=${hourUtc} UTC (diff=${diffHours}h > catchup=${CATCHUP_HOURS}h)`)
     }
   }
 

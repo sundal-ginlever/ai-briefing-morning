@@ -86,6 +86,11 @@ jobs:
           BRIEFING_LANGUAGE:     ${{ vars.BRIEFING_LANGUAGE || 'English' }}
           BRIEFING_TARGET_SECONDS: ${{ vars.BRIEFING_TARGET_SECONDS || '120' }}
 
+          # 음성 합성·발송을 맥미니 로컬 VibeVoice 워커에 위임.
+          # Actions는 뉴스+대본까지만 하고 audio_url=null 로그를 큐로 남긴다.
+          # 'false'로 되돌리면 기존 Gemini TTS 경로로 즉시 복귀한다.
+          SKIP_AUDIO:            ${{ vars.SKIP_AUDIO || 'true' }}
+
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             node src/pipeline/runner.js --dry-run

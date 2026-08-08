@@ -32,7 +32,9 @@ const emailProvider   = validateChoice('EMAIL_PROVIDER',   optional('EMAIL_PROVI
 
 export const config = {
   news: {
-    apiKey:     required('NEWS_API_KEY'),
+    // 지연 평가 — 뉴스를 실제로 가져올 때만 강제한다.
+    // 맥미니 로컬 TTS 워커처럼 뉴스와 무관한 진입점이 이 키 없이도 돌아야 하기 때문.
+    get apiKey() { return required('NEWS_API_KEY') },
     country:    optional('NEWS_COUNTRY',    'us'),
     categories: optional('NEWS_CATEGORIES', 'general,technology').split(',').map(c => c.trim()),
     keywords:   optional('NEWS_KEYWORDS', '').split(',').map(k => k.trim()).filter(Boolean),

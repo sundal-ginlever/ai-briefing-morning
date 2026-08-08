@@ -26,6 +26,12 @@ import { config } from '../../config/index.js'
 const isDryRun   = process.argv.includes('--dry-run')
 const targetUser = process.argv.find(a => a.startsWith('--user='))?.split('=')[1]
 
+// 음성 합성·발송을 건너뛰고 대본까지만 만드는 모드.
+// GitHub Actions 러너는 맥미니의 로컬 VibeVoice에 접근할 수 없으므로
+// Actions는 여기까지만 하고, audio_url=null 로그를 큐 삼아
+// 맥미니 워커(src/local/tts-worker.js)가 음성과 발송을 맡는다.
+const skipAudio = process.argv.includes('--skip-audio') || process.env.SKIP_AUDIO === 'true'
+
 // ─── Phase 3: 동시성 제어 상수 ──────────────────────────────────────────────
 const MAX_CONCURRENCY = parseInt(process.env.MAX_CONCURRENCY ?? '5', 10)
 
@@ -85,27 +91,33 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
   const script = await generateScript(articles, override)
   logger.info(`${userTag} Script: "${script.slice(0,80)}..."`)
 
-  // Step 3 — TTS 합성 (gemini는 provider 내부에서 단락별 멀티보이스 분할 합성)
-  logger.info(`${userTag} [3/8] Synthesizing audio`)
-  // 혹시 남아있을 [PAUSE] 토큰은 마침표로 치환(말줄임표는 Gemini TTS가 속삭이는 pause로 과장 해석함)
-  const ttsScript  = script.replace(/\[PAUSE\]/gi, '. ').replace(/[ \t]{2,}/g, ' ').trim()
-  const audioBuffer = await synthesizeSpeech(ttsScript, override)
+  // Step 3~5 — 음성 합성·저장·발송.
+  // skipAudio면 전부 건너뛰고 audio_url=null로 로그만 남긴다.
+  // 맥미니 워커가 그 행을 집어 로컬 VibeVoice로 음성을 만들고 발송한다.
+  let audioUrl = null
+  if (skipAudio) {
+    logger.info(`${userTag} [3-5/8] Skipping audio & email — 맥미니 로컬 TTS 워커가 처리`)
+  } else {
+    logger.info(`${userTag} [3/8] Synthesizing audio`)
+    // 혹시 남아있을 [PAUSE] 토큰은 마침표로 치환(말줄임표는 Gemini TTS가 속삭이는 pause로 과장 해석함)
+    const ttsScript   = script.replace(/\[PAUSE\]/gi, '. ').replace(/[ \t]{2,}/g, ' ').trim()
+    const audioBuffer = await synthesizeSpeech(ttsScript, override)
 
-  // Step 4
-  logger.info(`${userTag} [4/8] Saving audio`)
-  const filename = userId ? `${userId.slice(0,8)}-${date}.mp3` : `${date}.mp3`
-  const audioUrl = await saveAudio(audioBuffer, filename)
+    logger.info(`${userTag} [4/8] Saving audio`)
+    const filename = userId ? `${userId.slice(0,8)}-${date}.mp3` : `${date}.mp3`
+    audioUrl = await saveAudio(audioBuffer, filename)
 
-  // Step 5
-  logger.info(`${userTag} [5/8] Sending email to ${emailTo}`)
-  await sendBriefingEmail({ audioUrl, script, headlines: articles.map(a => a.title), date: dateLabel, to: emailTo })
+    logger.info(`${userTag} [5/8] Sending email to ${emailTo}`)
+    await sendBriefingEmail({ audioUrl, script, headlines: articles.map(a => a.title), date: dateLabel, to: emailTo })
+  }
 
   // Step 6
   logger.info(`${userTag} [6/8] Saving log`)
   const durationMs = Date.now() - startTime
   await saveBriefingLog({ userId, date, script, audioUrl, articles,
     llmProvider: override.llm?.provider ?? config.llm.provider,
-    ttsProvider: override.tts?.provider ?? config.tts.provider,
+    // skipAudio면 아직 합성 전이므로 실제 제공자는 워커가 채운다
+    ttsProvider: skipAudio ? 'pending' : (override.tts?.provider ?? config.tts.provider),
     durationMs })
 
   // Step 7: GitHub 동기화를 위한 로컬 MD 저장 (옵시디언 연동용)

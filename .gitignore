@@ -8,3 +8,6 @@ temp_output_*.mp3
 temp_list_*.txt
 temp_tts_*.pcm
 temp_tts_*.mp3
+__pycache__/
+.tts-tmp/
+.tts-worker.lock

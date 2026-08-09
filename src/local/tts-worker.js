@@ -10,7 +10,7 @@
 //
 // 실행: node src/local/tts-worker.js [--days=3] [--dry-run]
 
-import { spawn }            from 'child_process'
+import { spawn, execFileSync } from 'child_process'
 import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from 'fs'
 import { join, dirname }    from 'path'
 import { fileURLToPath }    from 'url'
@@ -37,6 +37,44 @@ const VV = {
   // 스래싱 방어: 정상은 6~9분이므로 그 3배를 넘으면 갈아대는 중으로 본다.
   // (네이티브 멀티화자 실패 시 13~30시간을 갈았던 전례가 있어 상한이 필수)
   timeoutMs: parseInt(process.env.VIBEVOICE_TIMEOUT_MS ?? '1800000', 10),
+}
+
+// Ollama와의 조율 — 별도 락 시스템을 새로 만드는 대신, Ollama가 이미 노출하는
+// 상태(`ollama ps`)를 그대로 물어본다. weekly-research 등 Ollama를 쓰는 다른
+// 크론이 시각을 옮기거나 예상보다 오래 걸려도, VibeVoice가 알아서 비켜준다.
+// keep_alive=5m이라 대부분 waitMaxMs 안에 자연히 풀리고, 정 안 풀리면 이번 회차는
+// 건너뛰고 다음 크론(05:15↔08:00)이 따라잡는다 — 매일 실행되는 배치 작업이라
+// 한 슬롯 미루는 게 상주 데몬을 새로 만드는 것보다 훨씬 단순하다.
+const OLLAMA = {
+  waitMaxMs:  parseInt(process.env.VIBEVOICE_OLLAMA_WAIT_MAX_MS ?? '600000', 10),  // 10분
+  pollMs:     parseInt(process.env.VIBEVOICE_OLLAMA_POLL_MS     ?? '30000', 10),   // 30초
+}
+
+/** ollama ps 결과로 로드된 모델이 있는지 확인. ollama가 없거나 오류나면 '안 바쁨'으로 간주. */
+function isOllamaBusy() {
+  try {
+    const out = execFileSync('ollama', ['ps'], { encoding: 'utf8', timeout: 5000 })
+    // 헤더 한 줄만 있으면 로드된 모델 없음
+    return out.trim().split('\n').length > 1
+  } catch {
+    return false
+  }
+}
+
+/** Ollama가 비워질 때까지 최대 waitMaxMs 대기. 끝내 안 비면 false(양보 실패). */
+async function waitForOllamaIdle() {
+  if (!isOllamaBusy()) return true
+  logger.info(`[tts-worker] Ollama 모델 로드 중 — 최대 ${OLLAMA.waitMaxMs / 60000}분 대기`)
+  const deadline = Date.now() + OLLAMA.waitMaxMs
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, OLLAMA.pollMs))
+    if (!isOllamaBusy()) {
+      logger.info('[tts-worker] Ollama 유휴 확인 — 진행')
+      return true
+    }
+  }
+  logger.warn('[tts-worker] Ollama가 계속 사용 중 — 이번 회차 건너뜀 (다음 크론이 따라잡음)')
+  return false
 }
 
 const ENV_NAMES = { python: 'VIBEVOICE_PYTHON', model: 'VIBEVOICE_MODEL', voicesDir: 'VIBEVOICE_VOICES_DIR' }
@@ -187,6 +225,9 @@ async function main() {
     return
   }
   logger.info(`[tts-worker] ${pending.length}건 발견`)
+
+  // 처리할 게 있을 때만 Ollama 상태를 확인한다 (없으면 기다릴 이유가 없음)
+  if (!(await waitForOllamaIdle())) return
 
   let ok = 0, fail = 0
   // 순차 처리 — 동시에 돌리면 모델이 여러 개 올라가 스왑이 터진다

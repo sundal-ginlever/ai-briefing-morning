@@ -53,6 +53,38 @@ def split_segments(text):
     return [p.strip().replace("\n", " ") for p in re.split(r"\n\s*\n+", text.strip()) if p.strip()]
 
 
+def synthesize(processor, model, voice_path, text, cfg_scale):
+    """단일 세그먼트 합성. (음성 numpy 배열, 소요초) 반환."""
+    inputs = processor(
+        text=[f"Speaker 1: {text}"],
+        voice_samples=[[str(voice_path)]],
+        padding=True, return_tensors="pt", return_attention_mask=True,
+    )
+    for k, v in inputs.items():
+        if torch.is_tensor(v):
+            inputs[k] = v.to("mps")
+
+    t = time.time()
+    out = model.generate(
+        **inputs, max_new_tokens=None, cfg_scale=cfg_scale,
+        tokenizer=processor.tokenizer,
+        generation_config={"do_sample": False}, verbose=False,
+    )
+    gen = time.time() - t
+
+    audio = out.speech_outputs[0]
+    if torch.is_tensor(audio):
+        audio = audio.detach().float().cpu().numpy()
+    audio = np.asarray(audio, dtype=np.float32).reshape(-1)
+
+    del inputs, out
+    # 세그먼트마다 비워야 메모리가 누적되지 않는다 (릴레이의 핵심)
+    if hasattr(torch, "mps"):
+        torch.mps.empty_cache()
+
+    return audio, gen
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--script", required=True, help="대본 파일 경로")
@@ -102,44 +134,30 @@ def main():
     load_sec = time.time() - t0
     print(f"[relay] 모델 로드 {load_sec:.1f}초", flush=True)
 
+    # 워밍업 — 실측 4회 연속 첫 세그먼트만 RTF가 2~3배 튀는 현상(4.0~7.3x vs
+    # 나머지 2.2~2.6x 균일) 확인. MPS 커널/디퓨전 샘플러가 첫 generate() 호출에서
+    # 아직 안정화되지 않은 것으로 보여, 결과를 버리는 짧은 예열 합성을 먼저
+    # 실행해 실제 첫 세그먼트가 "두 번째 호출"이 되도록 한다.
+    t0 = time.time()
+    _, warmup_gen = synthesize(
+        processor, model, voices_dir / VOICE_FILES[args.anchor],
+        "This is a brief warm-up pass.", args.cfg_scale,
+    )
+    print(f"[relay] 워밍업 완료 {time.time()-t0:.1f}초 (생성 {warmup_gen:.1f}초, 결과 폐기)", flush=True)
+
     chunks = []
     silence = np.zeros(int(SR * args.gap), dtype=np.float32)
     total_gen = 0.0
 
     for i, (voice, seg) in enumerate(zip(assign, segments), 1):
-        inputs = processor(
-            text=[f"Speaker 1: {seg}"],
-            voice_samples=[[str(voices_dir / VOICE_FILES[voice])]],
-            padding=True, return_tensors="pt", return_attention_mask=True,
-        )
-        for k, v in inputs.items():
-            if torch.is_tensor(v):
-                inputs[k] = v.to("mps")
-
-        t = time.time()
-        out = model.generate(
-            **inputs, max_new_tokens=None, cfg_scale=args.cfg_scale,
-            tokenizer=processor.tokenizer,
-            generation_config={"do_sample": False}, verbose=False,
-        )
-        gen = time.time() - t
+        audio, gen = synthesize(processor, model, voices_dir / VOICE_FILES[voice], seg, args.cfg_scale)
         total_gen += gen
-
-        audio = out.speech_outputs[0]
-        if torch.is_tensor(audio):
-            audio = audio.detach().float().cpu().numpy()
-        audio = np.asarray(audio, dtype=np.float32).reshape(-1)
 
         if chunks:
             chunks.append(silence)
         chunks.append(audio)
         dur = len(audio) / SR
         print(f"[relay] {i}/{len(segments)} {voice:<7} 오디오 {dur:5.1f}초 / 생성 {gen:5.1f}초 / RTF {gen/dur if dur else 0:.2f}x", flush=True)
-
-        del inputs, out
-        # 세그먼트마다 비워야 메모리가 누적되지 않는다 (릴레이의 핵심)
-        if hasattr(torch, "mps"):
-            torch.mps.empty_cache()
 
     merged = np.concatenate(chunks)
     dst = pathlib.Path(args.out)
@@ -153,6 +171,7 @@ def main():
         "duration_sec": round(duration, 2),
         "generate_sec": round(total_gen, 2),
         "load_sec": round(load_sec, 2),
+        "warmup_gen_sec": round(warmup_gen, 2),
         "rtf": round(total_gen / duration, 3) if duration else None,
         "segments": len(segments),
         "voices": assign,

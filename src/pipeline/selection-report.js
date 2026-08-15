@@ -72,8 +72,9 @@ export function buildSelectionReport({ report, articles = [], userId, date, date
   } else {
     sel.forEach((s, i) => {
       let tag
-      if (s.selectedBy === 'keyword') {
-        tag = `🔑 키워드매칭${s.matched?.length ? ` (${s.matched.join(', ')})` : ''}`
+      if (s.selectedBy?.startsWith('slot:')) {
+        const slotName = s.selectedBy.slice('slot:'.length)
+        tag = `🔑 슬롯[${slotName}] → "${s.slotKeyword}"${s.matched?.length ? ` (매칭: ${s.matched.join(', ')})` : ''}`
       } else if (s.selectedBy === 'ai-curation') {
         tag = `🤖 AI선정${s.matched?.length ? ` (연관: ${s.matched.join(', ')})` : ''}`
       } else {

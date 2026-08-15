@@ -6,11 +6,12 @@ import { logger }                 from '../utils/logger.js'
 import { withRetry, isRetryable } from '../utils/retry.js'
 
 export async function generateScript(articles, override = {}) {
-  const language      = override.briefing?.language      ?? config.briefing.language
-  const targetSeconds = override.briefing?.targetSeconds ?? config.briefing.targetSeconds
-  const customPrompt  = override.briefing?.customPrompt  ?? ''
-  const systemPrompt  = buildSystemPrompt(language, targetSeconds, customPrompt)
-  const userPrompt    = buildUserPrompt(articles)
+  const language       = override.briefing?.language       ?? config.briefing.language
+  const targetSeconds  = override.briefing?.targetSeconds  ?? config.briefing.targetSeconds
+  const secondsPerStory = override.briefing?.secondsPerStory ?? config.briefing.secondsPerStory
+  const customPrompt   = override.briefing?.customPrompt   ?? ''
+  const systemPrompt   = buildSystemPrompt(language, targetSeconds, customPrompt, articles.length, secondsPerStory)
+  const userPrompt     = buildUserPrompt(articles)
 
   const provider = override.llm?.provider ?? config.llm.provider
   const model    = getModel(provider, override.llm?.model)
@@ -39,17 +40,22 @@ async function dispatch(provider, model, systemPrompt, userPrompt) {
   }
 }
 
-function buildSystemPrompt(language, targetSeconds, customPrompt) {
-  const wordCount = Math.round(targetSeconds * 2.5)
+function buildSystemPrompt(language, targetSeconds, customPrompt, articleCount = 0, secondsPerStory = 40) {
+  const wordCount     = Math.round(targetSeconds * 2.5)
+  const perStoryWords = Math.round(secondsPerStory * 2.5)
+  const lengthGuidance = articleCount > 0
+    ? `Target length: ${targetSeconds} seconds total when read aloud (~${wordCount} words). Give each of the ${articleCount} news stories roughly equal length — about ${perStoryWords} words each (~${secondsPerStory} seconds when spoken) — with a few extra sentences for the opening greeting and closing sign-off to round out the total.`
+    : `Target length: ${targetSeconds} seconds when read aloud (~${wordCount} words).`
   const basePrompt = `You are a professional, warm, and friendly morning news anchor.
 Write an exceptionally engaging and conversational spoken audio briefing script in ${language}.
-Target length: ${targetSeconds} seconds when read aloud (~${wordCount} words).
+${lengthGuidance}
 Style: conversational, warm, and natural — like a friendly NPR morning host speaking directly to a valued listener. Use cozy, welcoming tones and expressions (e.g. if in Korean, write in polite, warm colloquial style like "~입니다", "~인데요", "~라고 하네요", "~해 보시는 건 어떨까요?").
 Pacing & Rhythm:
 1. Use commas and periods for natural sentence breaks. Avoid ellipses (...) and em-dashes (—) — the text-to-speech engine reads them as long, breathy, whispered pauses rather than natural pacing.
 2. Break long sentences into multiple short, punchy, conversational spoken-word phrases using periods, not dashes or ellipses.
 Natural Pronunciation: Write exactly as the text should be spoken aloud. Spell out any foreign acronyms, numbers, or technical terms phonetically in ${language} to prevent the text-to-speech engine from reading them out letter-by-letter or sounding robotic (e.g., if ${language} is Korean, write "에이아이" or "인공지능" instead of "AI", "엔비디아" instead of "NVIDIA", "일조 원" instead of "1조원").
 Separate each news story with a short, natural spoken transition (e.g. "Next up...", "In other news...", "Meanwhile...") so it flows smoothly as one continuous broadcast.
+Each story should have real substance, not filler: include the key fact, one or two sentences of context or why it matters, and where relevant a notable number, quote, or reaction — not padding or repetition.
 Write each story as its own paragraph, with a blank line between paragraphs (the intro greeting and closing sign-off may each be their own paragraph too).
 Do NOT include stage directions, sound effects, timestamps, or bracketed markers like [PAUSE].
 Output the script text only, nothing else.`

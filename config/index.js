@@ -87,8 +87,10 @@ export const config = {
     from: optional('EMAIL_FROM'),
   },
   briefing: {
-    language:      optional('BRIEFING_LANGUAGE',       'English'),
-    targetSeconds: parseInt(optional('BRIEFING_TARGET_SECONDS', '120'), 10),
+    language:       optional('BRIEFING_LANGUAGE',       'English'),
+    // 로컬 VibeVoice로 전환하며 기사당 목표를 늘림: 인사~15s + 기사5×40s(200s) + 마무리~15s ≈ 230s(3:50), 4분 이내
+    targetSeconds:  parseInt(optional('BRIEFING_TARGET_SECONDS', '230'), 10),
+    secondsPerStory: parseInt(optional('BRIEFING_SECONDS_PER_STORY', '40'), 10),
   },
   server: {
     adminEmails: optional('ADMIN_EMAILS', '').split(',').map(e => e.trim()).filter(Boolean),

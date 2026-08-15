@@ -25,10 +25,36 @@ function matchedKeywords(article, keywords) {
   return keywords.filter(k => wordBoundaryMatch(text, k))
 }
 
+/** Fisher-Yates 셔플 (원본 배열 불변) */
+function shuffle(arr) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+/**
+ * 고정 5슬롯 편성표. 매일 이 구성대로 기사를 채운다.
+ *  - fixed    : 후보 1개, 그대로 사용
+ *  - random   : 후보 중 매 생성마다 무작위 순서로 시도(첫 매칭 채택) — 같은 슬롯이라도
+ *               고른 후보에 기사가 없으면 같은 주제군 안에서 다음 후보로 자연스럽게 대체됨
+ *  - priority : 후보를 나열 순서대로 시도 — 1순위가 없을 때만 2순위로 폴백
+ * 슬롯이 전부 실패하면(모든 후보 매칭 0) 그 자리는 비워두고 3단계 AI 큐레이션이 채운다.
+ */
+const SLOTS = [
+  { name: 'AI',       type: 'fixed',    candidates: ['AI'] },
+  { name: 'crypto',   type: 'random',   candidates: ['bitcoin', 'ethereum', 'Bitmine'] },
+  { name: 'defi',     type: 'random',   candidates: ['DeFi', 'TVL'] },
+  { name: 'palantir', type: 'fixed',    candidates: ['palantir'] },
+  { name: 'defense',  type: 'priority', candidates: ['erebor', 'Anduril'] },
+]
+
 /**
  * news pool에서 최근 24시간 기사를 가져와 선정.
  *  - 키워드 매칭: 단어경계 기준 (부분문자열 오매칭 방지)
- *  - 우선순위/다양성: 키워드 입력 순서대로 라운드로빈 (각 키워드 1개씩 번갈아)
+ *  - 편성: 고정 5슬롯(SLOTS) — 슬롯별 규칙(고정/랜덤/우선순위)대로 후보를 골라 매칭
  *  - 부족분: AI 큐레이션 폴백
  * 반환: { articles, report }
  */
@@ -90,41 +116,41 @@ export async function fetchArticlesFromPool(userId, keywords = [], limit = 5, ov
     ).length
   }
 
-  // 2) 키워드별 라운드로빈 선정 (입력 순서 = 우선순위, 각 키워드 1개씩 번갈아)
+  // 2) 슬롯 편성 — 슬롯마다 규칙(고정/랜덤/우선순위)대로 후보 키워드를 시도해
+  //    가장 최신 미사용 기사를 채운다. pool은 이미 published_at 내림차순이라
+  //    bucket.find()의 첫 매칭이 곧 최신 기사.
   const selectedUrls = new Set()
   let finalArticles = []
 
-  if (safeKeywords.length > 0) {
-    const buckets = safeKeywords.map(kw => ({
-      kw,
-      articles: pool.filter(a => wordBoundaryMatch(`${a.title || ''} ${a.description || ''}`, kw)),
-    }))
+  for (const slot of SLOTS) {
+    if (finalArticles.length >= limit) break
 
-    let progressed = true
-    while (finalArticles.length < limit && progressed) {
-      progressed = false
-      for (const bucket of buckets) {
-        if (finalArticles.length >= limit) break
-        const next = bucket.articles.find(a => !selectedUrls.has(a.url))
-        if (next) {
-          selectedUrls.add(next.url)
-          finalArticles.push(next)
-          progressed = true
-        }
-      }
+    const order = slot.type === 'random' ? shuffle(slot.candidates) : slot.candidates
+    let picked = null, pickedKw = null
+    for (const kw of order) {
+      const match = pool.find(a =>
+        !selectedUrls.has(a.url) && wordBoundaryMatch(`${a.title || ''} ${a.description || ''}`, kw)
+      )
+      if (match) { picked = match; pickedKw = kw; break }
+    }
+
+    if (picked) {
+      selectedUrls.add(picked.url)
+      finalArticles.push(picked)
+      report.selected.push({
+        title:       picked.title,
+        url:         picked.url,
+        source:      picked.source_name,
+        selectedBy:  `slot:${slot.name}`,
+        slotKeyword: pickedKw,
+        matched:     matchedKeywords(picked, safeKeywords),
+      })
+    } else {
+      logger.info(`[pool-reader] slot "${slot.name}" 후보 전부 매칭 실패(${slot.candidates.join('/')}) — AI 큐레이션으로 대체 예정`)
     }
   }
 
   report.stage1Count = finalArticles.length
-  for (const a of finalArticles) {
-    report.selected.push({
-      title:      a.title,
-      url:        a.url,
-      source:     a.source_name,
-      selectedBy: 'keyword',
-      matched:    matchedKeywords(a, safeKeywords),
-    })
-  }
 
   // 3) 부족분 AI 큐레이션 (최신 후보 25개 중 선별)
   if (finalArticles.length < limit) {

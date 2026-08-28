@@ -51,6 +51,25 @@ export async function saveBriefingLog(record) {
 // 맥미니가 꺼져 있던 날도 켜지면 밀린 만큼 따라잡는다.
 
 /**
+ * 특정 날짜의 로그가 (audio_url 상태 무관하게) 하나라도 존재하는지 확인.
+ * GitHub Actions의 `schedule` 트리거는 베스트 에포트라 드롭될 수 있어 —
+ * 대본 자체가 아예 안 만들어진 날인지(재트리거 필요) 판별하는 용도.
+ */
+export async function hasLogForDate(date) {
+  const supabase = await getClient()
+  if (!supabase) throw new Error('Supabase not configured')
+
+  const { data, error } = await supabase
+    .from('a_briefing_logs')
+    .select('id')
+    .eq('date', date)
+    .limit(1)
+
+  if (error) throw new Error(`hasLogForDate failed: ${error.message}`)
+  return (data ?? []).length > 0
+}
+
+/**
  * 음성이 아직 없는 브리핑 로그 조회 (오래된 것부터).
  * @param {number} days 며칠 전까지 따라잡을지
  */

@@ -43,7 +43,7 @@ export const config = {
   llm: {
     provider: llmProvider,
     openai:  { apiKey: optional('OPENAI_API_KEY'), model: optional('OPENAI_MODEL', 'gpt-4o-mini') },
-    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_MODEL', 'gemini-2.5-flash') },
+    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_MODEL', 'gemini-3.5-flash') },
     ollama:  { baseUrl: optional('OLLAMA_BASE_URL', 'http://localhost:11434'), model: optional('OLLAMA_MODEL', 'llama3.2') },
   },
   tts: {
@@ -52,6 +52,7 @@ export const config = {
     google:  { apiKey: optional('GOOGLE_API_KEY', process.env.GEMINI_API_KEY) },
     gemini:  {
       apiKey: optional('GEMINI_API_KEY'),
+      // 긴급 대체 경로 전용(평시엔 맥미니 VibeVoice). 실호출 검증 완료 2026-08-28.
       model:  optional('GEMINI_TTS_MODEL', 'gemini-3.1-flash-tts-preview'),
       voice:  optional('GEMINI_TTS_VOICE', 'Sulafat'),
       // 단락별 멀티보이스 로테이션 (입력 순서대로 순환, 마지막 보이스가 마무리 담당)

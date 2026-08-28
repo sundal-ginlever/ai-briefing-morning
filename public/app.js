@@ -20,6 +20,11 @@ const STRINGS = {
     empty:          "아직 방송이 없습니다.",
     scriptShow:     "대본 보기",
     scriptHide:     "대본 접기",
+    play:           "재생",
+    pause:          "일시정지",
+    seek:           "재생 위치",
+    speed:          "재생 속도",
+    download:       "다운로드",
     feedError:      "피드 주소를 불러오지 못했습니다",
     listError:      "방송 목록을 불러오지 못했습니다.",
     footer:         "AI가 매일 자동으로 만드는 개인용 브리핑입니다.",
@@ -40,6 +45,11 @@ const STRINGS = {
     empty:          "No episodes yet.",
     scriptShow:     "Show transcript",
     scriptHide:     "Hide transcript",
+    play:           "Play",
+    pause:          "Pause",
+    seek:           "Seek",
+    speed:          "Speed",
+    download:       "Download",
     feedError:      "Could not load the feed address",
     listError:      "Could not load the episode list.",
     footer:         "A personal briefing generated automatically by AI, every day.",
@@ -93,6 +103,88 @@ function selectFallback() {
   input.select();
 }
 
+// mm:ss — 재생 위치 표시용(길이 표기 2m25s와 달리 시계처럼 읽혀야 한다)
+function clock(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+}
+
+/** Supabase Storage에 다운로드를 강제하는 쿼리(교차 출처라 download 속성만으론 안 된다) */
+function withDownloadParam(url) {
+  return `${url}${url.includes("?") ? "&" : "?"}download=`;
+}
+
+const SPEEDS = [1, 1.25, 1.5, 2];
+
+// 네이티브 <audio controls>는 컨트롤 UI가 닫힌 shadow DOM이라 페이지에서 문구를
+// 바꿀 수 없다(브라우저 UI 언어를 따르므로 EN을 골라도 "다운로드"로 나온다).
+// 그래서 직접 만든다 — 덤으로 다크 테마와도 맞고, API가 주는 duration을 써서
+// preload="none" 상태에서도 총 길이를 바로 보여줄 수 있다.
+function buildPlayer(item) {
+  const totalSec = item.durationMs ? item.durationMs / 1000 : 0;
+
+  const wrap = el("div", "player");
+  const audio = el("audio");
+  audio.preload = "none";
+  audio.src = item.audioUrl;
+
+  const playBtn = el("button", "p-play");
+  playBtn.type = "button";
+  const setPlayIcon = () => {
+    const playing = !audio.paused && !audio.ended;
+    playBtn.textContent = playing ? "❚❚" : "▶";
+    playBtn.setAttribute("aria-label", t(playing ? "pause" : "play"));
+    playBtn.title = t(playing ? "pause" : "play");
+  };
+
+  const seek = el("input", "p-seek");
+  seek.type = "range";
+  seek.min = 0;
+  seek.max = totalSec || 100;
+  seek.step = "any";
+  seek.value = 0;
+  seek.setAttribute("aria-label", t("seek"));
+
+  const time = el("span", "p-time", `0:00 / ${clock(totalSec)}`);
+
+  const speed = el("select", "p-speed");
+  speed.setAttribute("aria-label", t("speed"));
+  speed.title = t("speed");
+  for (const s of SPEEDS) {
+    const o = el("option", null, `${s}×`);
+    o.value = String(s);
+    speed.appendChild(o);
+  }
+
+  const dl = el("a", "p-dl", "⤓");
+  dl.href = withDownloadParam(item.audioUrl);
+  dl.setAttribute("aria-label", t("download"));
+  dl.title = t("download");
+
+  playBtn.onclick = () => (audio.paused ? audio.play() : audio.pause());
+  speed.onchange = () => { audio.playbackRate = Number(speed.value); };
+  seek.oninput = () => {
+    audio.currentTime = Number(seek.value);
+    time.textContent = `${clock(audio.currentTime)} / ${clock(audio.duration || totalSec)}`;
+  };
+
+  audio.addEventListener("play", setPlayIcon);
+  audio.addEventListener("pause", setPlayIcon);
+  audio.addEventListener("ended", setPlayIcon);
+  audio.addEventListener("loadedmetadata", () => {
+    // 실제 길이를 알게 되면 API가 준 값보다 그쪽을 신뢰한다
+    if (isFinite(audio.duration)) seek.max = audio.duration;
+  });
+  audio.addEventListener("timeupdate", () => {
+    seek.value = audio.currentTime;
+    time.textContent = `${clock(audio.currentTime)} / ${clock(audio.duration || totalSec)}`;
+  });
+
+  setPlayIcon();
+  wrap.append(audio, playBtn, seek, time, speed, dl);
+  return wrap;
+}
+
 function renderEpisodes() {
   const box = document.getElementById("episodes");
   box.textContent = "";
@@ -119,11 +211,7 @@ function renderEpisodes() {
     head.appendChild(el("span", "ep-dur", fmtDuration(item.durationMs)));
     card.appendChild(head);
 
-    const audio = el("audio");
-    audio.controls = true;
-    audio.preload = "none";
-    audio.src = item.audioUrl;
-    card.appendChild(audio);
+    card.appendChild(buildPlayer(item));
 
     if (item.script) {
       const toggle = el("button", "ep-toggle", t("scriptShow"));

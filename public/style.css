@@ -82,7 +82,49 @@ button.copied { background: var(--green) }
 }
 .ep-date { font-weight: 600; font-size: 15px }
 .ep-dur { color: var(--muted); font-size: 13px }
-audio { width: 100%; height: 36px; display: block }
+/* ── 커스텀 오디오 플레이어 ──
+   네이티브 controls는 닫힌 shadow DOM이라 문구를 번역할 수 없어 직접 만든다. */
+.player { display: flex; align-items: center; gap: 10px }
+.player audio { display: none }
+
+.p-play {
+  flex-shrink: 0; width: 36px; height: 36px; padding: 0; border-radius: 50%;
+  font-size: 12px; line-height: 1; display: flex; align-items: center;
+  justify-content: center;
+}
+
+.p-seek {
+  flex: 1; min-width: 0; height: 4px; -webkit-appearance: none; appearance: none;
+  background: var(--border); border-radius: 2px; cursor: pointer;
+}
+.p-seek::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 13px; height: 13px;
+  border-radius: 50%; background: var(--accent); cursor: pointer;
+}
+.p-seek::-moz-range-thumb {
+  width: 13px; height: 13px; border: none; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+}
+.p-seek:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px }
+
+.p-time {
+  flex-shrink: 0; font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums; min-width: 76px; text-align: right;
+}
+
+.p-speed {
+  flex-shrink: 0; background: var(--bg); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 6px; font-size: 12px; cursor: pointer;
+}
+.p-speed:hover { color: var(--text) }
+
+.p-dl {
+  flex-shrink: 0; width: 30px; height: 30px; display: flex; align-items: center;
+  justify-content: center; border-radius: 6px; text-decoration: none;
+  color: var(--muted); font-size: 16px; border: 1px solid var(--border);
+}
+.p-dl:hover { color: var(--text); background: var(--surface-2) }
 
 .ep-toggle {
   background: none; border: none; color: var(--accent); padding: 10px 0 0;

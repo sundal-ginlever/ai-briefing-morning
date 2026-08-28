@@ -42,15 +42,13 @@ async function saveToSupabase(audioBuffer, filename) {
 
   if (error) throw new Error(`Supabase storage upload failed: ${error.message}`)
 
-  // Generate a signed URL valid for 7 days (recipients get a week to listen)
-  const { data, error: signError } = await supabase.storage
-    .from(config.storage.bucket)
-    .createSignedUrl(filename, 60 * 60 * 24 * 7)
+  // 버킷이 public이므로 영구 공개 URL을 쓴다. 예전엔 7일 서명 URL을 발급했는데,
+  // 파일 자체는 어차피 공개라 만료는 이메일 링크만 죽이는 자충수였고, RSS 피드는
+  // 그 만료를 피하려 매 요청마다 전 회차를 재서명해야 했다(공개 히스토리에선 더 큰 부담).
+  const { data } = supabase.storage.from(config.storage.bucket).getPublicUrl(filename)
 
-  if (signError) throw new Error(`Supabase signed URL failed: ${signError.message}`)
-
-  logger.info(`[storage:supabase] uploaded → ${data.signedUrl.substring(0, 60)}...`)
-  return data.signedUrl
+  logger.info(`[storage:supabase] uploaded → ${data.publicUrl.substring(0, 60)}...`)
+  return data.publicUrl
 }
 
 // ─── Local Filesystem ─────────────────────────────────────────────────────────

@@ -1,38 +1,23 @@
 // src/api/router.js
-// Phase 2 REST API 라우터.
-// Express 없이 Node.js 기본 http 모듈 기반 (src/index.js에서 마운트).
+// 공개 전용 REST 라우터 (Express 없이 Node http 모듈 기반, src/index.js에서 마운트).
+//
+// 2026-08 정리: 설정 변경·수동실행·관리자 기능과 그에 딸린 Supabase Auth를 전부 걷어냈다.
+// 이유 — 설정은 클로드코드/맥미니 대시보드(99_open-board)에서 관리하는 것으로 일원화했고,
+// 이 배포본에 남은 목적은 "RSS 팟캐스트 피드 + 지난 방송 듣기" 하나뿐이다.
+// 인증이 사라져 공개 표면은 읽기 전용 3개로 줄었다.
 //
 // 엔드포인트:
-//   GET  /api/me                → 내 프로필 + 설정
-//   PUT  /api/me/settings       → 설정 변경
-//   GET  /api/history           → 브리핑 히스토리
-//   POST /api/run               → 수동 실행 (즉시)
-//   GET  /api/admin/users       → 전체 사용자 목록 (admin only)
+//   GET /api/meta                 → 피드 주소 등 페이지 렌더링용 메타
+//   GET /api/history              → 최근 30일 방송 목록 (공개)
+//   GET /api/feed/<userId>.xml    → 팟캐스트 RSS (기존 구독 URL 유지)
 
-import { getUserSettings, updateUserSettings, getBriefingHistory, settingsToOverride } from './users.js'
-import { getSupabase }   from './supabase.js'
-import { runPipeline, runScheduledUsers } from '../pipeline/runner.js'
-import { logger }        from '../utils/logger.js'
-import { config }        from '../../config/index.js'
+import { getBriefingHistory } from './users.js'
+import { getSupabase }        from './supabase.js'
+import { logger }             from '../utils/logger.js'
 
-// ─── JWT 검증 (Supabase Auth) ─────────────────────────────────────────────────
-
-async function verifyToken(req) {
-  const auth = req.headers['authorization'] ?? ''
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
-  if (!token) return null
-
-  const sb = getSupabase()
-  const { data, error } = await sb.auth.getUser(token)
-  if (error || !data.user) return null
-  return data.user
-}
-
-function isAdmin(user) {
-  // Supabase 커스텀 claim 또는 환경변수로 관리자 판별
-  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map(e => e.trim())
-  return adminEmails.includes(user.email)
-}
+// 피드·히스토리에 싣는 회차 수. 팟캐스트 앱은 피드에 실린 것만 보여주므로
+// 페이지의 히스토리와 같은 값을 써서 "보이는 것 = 구독으로 받는 것"을 일치시킨다.
+const EPISODE_LIMIT = 30
 
 // ─── 응답 헬퍼 ───────────────────────────────────────────────────────────────
 
@@ -45,7 +30,7 @@ function err(res, status, message) {
   json(res, status, { error: message })
 }
 
-/** XML 특수문자 이스케이프 (RSS 피드 텍스트 노드용) */
+/** XML 특수문자 이스케이프 (RSS 텍스트 노드용) */
 function escapeXml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -55,168 +40,79 @@ function escapeXml(s) {
     .replace(/'/g, '&apos;')
 }
 
-async function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = ''
-    let length = 0
-    req.on('data', chunk => { 
-      body += chunk 
-      length += chunk.length
-      if (length > 100 * 1024) { // 100KB Limit
-        req.destroy()
-        reject(new Error('Payload Too Large'))
-      }
-    })
-    req.on('end',  ()    => {
-      try { resolve(body ? JSON.parse(body) : {}) }
-      catch { reject(new Error('Invalid JSON body')) }
-    })
-    req.on('error', reject)
-  })
+// ─── 대상 사용자 해석 ────────────────────────────────────────────────────────
+//
+// 1인 운영이라 UUID를 어디에도 하드코딩하지 않고 DB에서 활성 사용자를 찾아 캐시한다.
+// (설정 UI가 사라진 뒤로 이 값이 런타임에 바뀔 일이 없어 프로세스 수명 동안 캐시해도 안전)
+
+let _activeUserId = null
+
+async function getActiveUserId() {
+  if (_activeUserId) return _activeUserId
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('a_user_settings')
+    .select('user_id, a_user_profiles!inner(is_active)')
+    .eq('schedule_enabled', true)
+    .eq('a_user_profiles.is_active', true)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`getActiveUserId failed: ${error.message}`)
+  if (!data) throw new Error('No active user configured')
+  _activeUserId = data.user_id
+  return _activeUserId
 }
 
-// ─── 라우터 ──────────────────────────────────────────────────────────────────
-
-const userRunning = new Set()
-const rateLimitCache = new Map()
-
-const RATE_LIMIT_WINDOW_MS = 60 * 1000
-
-function isRateLimited(userId) {
-  const now = Date.now()
-  // 만료된 항목 정리 (Map 무한 성장 방지)
-  for (const [id, ts] of rateLimitCache) {
-    if (now - ts > RATE_LIMIT_WINDOW_MS) rateLimitCache.delete(id)
-  }
-  const lastRun = rateLimitCache.get(userId)
-  if (lastRun && now - lastRun < RATE_LIMIT_WINDOW_MS) return true
-  rateLimitCache.set(userId, now)
-  return false
-}
-
-// ─── Route Handlers ────────────────────────────────────────────────────────────
+// ─── 핸들러 ──────────────────────────────────────────────────────────────────
 
 async function handleHealth(req, res) {
   return json(res, 200, { status: 'ok', ts: new Date().toISOString() })
 }
 
-async function handleConfig(req, res) {
+async function handleMeta(req, res) {
+  const userId = await getActiveUserId()
   return json(res, 200, {
-    SUPABASE_URL: process.env.SUPABASE_URL ?? '',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ?? '',
+    feedPath: `/api/feed/${userId}.xml`,
+    episodeLimit: EPISODE_LIMIT,
   })
 }
 
-async function handleGetMe(req, res, url, user) {
-  const settings = await getUserSettings(user.id)
-  return json(res, 200, { id: user.id, email: user.email, settings })
+async function handleHistory(req, res) {
+  const userId  = await getActiveUserId()
+  const history = await getBriefingHistory(userId, EPISODE_LIMIT)
+  // 공개 페이지이므로 내부 정보(llm_provider/tts_provider)는 싣지 않는다.
+  const items = history
+    .filter(log => log.audio_url)
+    .map(log => ({
+      date:       log.date,
+      script:     log.script,
+      audioUrl:   log.audio_url,
+      durationMs: log.duration_ms,
+    }))
+  return json(res, 200, { items })
 }
 
-async function handlePutMeSettings(req, res, url, user) {
-  const body = await readBody(req)
-  const updated = await updateUserSettings(user.id, body)
-  return json(res, 200, { ok: true, settings: updated })
-}
-
-async function handleGetHistory(req, res, url, user) {
-  const limit = parseInt(url.searchParams.get('limit') ?? '30', 10)
-  const history = await getBriefingHistory(user.id, limit)
-  return json(res, 200, { history })
-}
-
-async function handlePostRun(req, res, url, user) {
-  if (userRunning.has(user.id)) return err(res, 409, 'Pipeline already running for your account')
-  if (isRateLimited(user.id)) return err(res, 429, 'Too Many Requests. Please wait 1 minute before running again.')
-
-  // 설정 조회는 응답 전에 수행 — 여기서 실패하면 정상적으로 500 반환.
-  // (202 발송 후 실패하면 락이 안 풀리고 headers-already-sent 오류가 남)
-  const settings = await getUserSettings(user.id)
-  const override = settingsToOverride(settings)
-  if (!override.email.to) override.email.to = user.email
-
-  json(res, 202, { status: 'accepted', message: 'Pipeline started for your account' })
-
-  userRunning.add(user.id)
-  runPipeline({ userId: user.id, override })
-    .then(() => logger.info(`[api] Manual run done for userId=${user.id}`))
-    .catch(e  => logger.error(`[api] Manual run failed: ${e.message}`))
-    .finally(() => { userRunning.delete(user.id) })
-}
-
-async function handleAdminGetUsers(req, res, url, user) {
-  const sb = getSupabase()
-  const { data, error: e } = await sb
-    .from('a_user_profiles')
-    .select('*, a_user_settings(*)')
-    .order('created_at', { ascending: false })
-  if (e) throw e
-  return json(res, 200, { users: data })
-}
-
-async function handleAdminRunAll(req, res, url, user) {
-  json(res, 202, { status: 'accepted' })
-  runScheduledUsers().catch(e => logger.error(`[api/admin] run-all failed: ${e.message}`))
-}
-
-// ─── 라우팅 테이블 ─────────────────────────────────────────────────────────────
-
-const publicRoutes = {
-  'GET /api/health': handleHealth,
-  'GET /api/config': handleConfig
-}
-
-const authRoutes = {
-  'GET /api/me': handleGetMe,
-  'PUT /api/me/settings': handlePutMeSettings,
-  'GET /api/history': handleGetHistory,
-  'POST /api/run': handlePostRun
-}
-
-const adminRoutes = {
-  'GET /api/admin/users': handleAdminGetUsers,
-  'POST /api/admin/run-all': handleAdminRunAll
-}
-
-async function handleGetFeed(req, res, url) {
+async function handleFeed(req, res, url) {
   const match = url.pathname.match(/^\/api\/feed\/([a-f0-9-]+)\.xml$/)
   if (!match) return err(res, 404, 'Not found')
   const userId = match[1]
 
   try {
-    const history = await getBriefingHistory(userId, 15) // Get latest 15 episodes (about 2 weeks of briefings)
+    const history = await getBriefingHistory(userId, EPISODE_LIMIT)
     const baseUrl = `https://${req.headers.host}`
-    const sb = getSupabase()
 
-    // Dynamically and in parallel resign Supabase audio URLs to ensure they never expire!
-    const historyWithFreshUrls = await Promise.all(
-      history.map(async (log) => {
-        if (!log.audio_url) return log
-        try {
-          // Extract filename from stored signed URL
-          const filename = log.audio_url.split('/').pop().split('?')[0]
-          const bucket = config.storage?.bucket || 'ai-briefing-audio'
-          const { data, error } = await sb.storage
-            .from(bucket)
-            .createSignedUrl(filename, 60 * 60 * 24 * 7) // 7 days expiration
-          if (!error && data?.signedUrl) {
-            return { ...log, audio_url: data.signedUrl }
-          }
-        } catch (e) {
-          logger.warn(`[api/feed] Failed to resign URL for log=${log.id}: ${e.message}`)
-        }
-        return log
-      })
-    )
-    
-    // RSS XML configuration matching premium Apple Podcasts standards
+    // 오디오 URL은 업로드 시점에 영구 공개 URL로 저장된다(storage.js).
+    // 예전엔 7일 서명 URL이라 피드가 매 요청마다 전 회차를 재서명해야 했는데,
+    // 버킷이 애초에 public이라 불필요한 왕복이었다.
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`
     xml += `<rss version="2.0" \n`
     xml += `     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"\n`
     xml += `     xmlns:content="http://purl.org/rss/1.0/modules/content/">\n`
     xml += `<channel>\n`
-    xml += `  <title>☀️ Morning Briefing (${userId.slice(0,8)})</title>\n`
+    xml += `  <title>☀️ Morning Briefing</title>\n`
     xml += `  <link>${baseUrl}</link>\n`
-    xml += `  <language>ko</language>\n`
+    xml += `  <language>en</language>\n`
     xml += `  <itunes:author>AI Anchor</itunes:author>\n`
     xml += `  <itunes:summary>매일 아침 AI 앵커가 전달하는 맞춤형 개인화 종합 뉴스 브리핑쇼입니다.</itunes:summary>\n`
     xml += `  <description>매일 아침 AI 앵커가 전달하는 맞춤형 개인화 종합 뉴스 브리핑쇼입니다.</description>\n`
@@ -225,13 +121,13 @@ async function handleGetFeed(req, res, url) {
     xml += `  <itunes:category text="News"/>\n`
     xml += `  <itunes:explicit>no</itunes:explicit>\n`
 
-    for (const log of historyWithFreshUrls) {
+    for (const log of history) {
       if (!log.audio_url) continue
-      
+
       const pubDate = new Date(log.created_at).toUTCString()
       const guid = `briefing-${userId}-${log.id}`
       const cleanSummary = log.script.replace(/\[PAUSE\]/ig, ' ').slice(0, 250) + '...'
-      
+
       xml += `  <item>\n`
       xml += `    <title>☀️ AI Briefing - ${escapeXml(log.date)}</title>\n`
       xml += `    <itunes:author>AI Anchor</itunes:author>\n`
@@ -255,38 +151,29 @@ async function handleGetFeed(req, res, url) {
   }
 }
 
+// ─── 라우팅 ──────────────────────────────────────────────────────────────────
+
+const routes = {
+  'GET /api/health':  handleHealth,
+  'GET /api/meta':    handleMeta,
+  'GET /api/history': handleHistory,
+}
+
 export async function handleApiRequest(req, res) {
   const url    = new URL(req.url, 'http://localhost')
   const path   = url.pathname
   const method = req.method
-  const routeKey = `${method} ${path}`
 
   try {
-    if (publicRoutes[routeKey]) {
-      return await publicRoutes[routeKey](req, res, url)
-    }
+    const handler = routes[`${method} ${path}`]
+    if (handler) return await handler(req, res, url)
 
-    // Phase 4: RSS Feed Route (Public, but requires user ID in URL)
     if (method === 'GET' && path.startsWith('/api/feed/')) {
-      return await handleGetFeed(req, res, url)
-    }
-
-    const user = await verifyToken(req)
-    if (!user) return err(res, 401, 'Unauthorized')
-
-    if (authRoutes[routeKey]) {
-      return await authRoutes[routeKey](req, res, url, user)
-    }
-
-    if (adminRoutes[routeKey]) {
-      if (!isAdmin(user)) return err(res, 403, 'Forbidden')
-      return await adminRoutes[routeKey](req, res, url, user)
+      return await handleFeed(req, res, url)
     }
 
     return err(res, 404, 'Not found')
-
   } catch (e) {
-    if (e.message === 'Payload Too Large') return err(res, 413, e.message)
     logger.error(`[api] Unhandled error: ${e.message}`)
     return err(res, 500, e.message)
   }

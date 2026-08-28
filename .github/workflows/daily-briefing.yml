@@ -84,9 +84,10 @@ jobs:
           NEWS_CATEGORIES:       ${{ vars.NEWS_CATEGORIES || 'general,technology' }}
           NEWS_PAGE_SIZE:        ${{ vars.NEWS_PAGE_SIZE || '5' }}
           BRIEFING_LANGUAGE:     ${{ vars.BRIEFING_LANGUAGE || 'English' }}
-          # 로컬 VibeVoice 전환 후 기사당 40초 목표로 확장 (5기사×40s + 인사/마무리 ≈ 230s, 4분 이내)
-          BRIEFING_TARGET_SECONDS: ${{ vars.BRIEFING_TARGET_SECONDS || '230' }}
-          BRIEFING_SECONDS_PER_STORY: ${{ vars.BRIEFING_SECONDS_PER_STORY || '40' }}
+          # 총 3분. 기사당 목표는 llm.js가 (총목표-인사마무리)/기사수로 파생시키므로
+          # 여기서 따로 주지 않는다 — 두 값을 각각 두면 서로 어긋난다(2026-08 실제 사고).
+          # 실효값은 DB(a_user_settings.briefing_target_secs)가 우선하므로 양쪽을 함께 맞출 것.
+          BRIEFING_TARGET_SECONDS: ${{ vars.BRIEFING_TARGET_SECONDS || '180' }}
 
           # 음성 합성·발송을 맥미니 로컬 VibeVoice 워커에 위임.
           # Actions는 뉴스+대본까지만 하고 audio_url=null 로그를 큐로 남긴다.

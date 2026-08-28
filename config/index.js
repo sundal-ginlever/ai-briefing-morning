@@ -88,9 +88,12 @@ export const config = {
   },
   briefing: {
     language:       optional('BRIEFING_LANGUAGE',       'English'),
-    // 로컬 VibeVoice로 전환하며 기사당 목표를 늘림: 인사~15s + 기사5×40s(200s) + 마무리~15s ≈ 230s(3:50), 4분 이내
-    targetSeconds:  parseInt(optional('BRIEFING_TARGET_SECONDS', '230'), 10),
-    secondsPerStory: parseInt(optional('BRIEFING_SECONDS_PER_STORY', '40'), 10),
+    // 총 길이 3분. 기사당 목표는 여기서 파생시키므로(llm.js) 따로 두지 않는다 —
+    // 총합과 기사당을 각각 설정하던 시절 DB(120s)와 env(기사당 40s)가 어긋나
+    // "총 120초인데 기사당 40초×5" 라는 모순된 프롬프트가 나갔던 전례가 있다.
+    targetSeconds:  parseInt(optional('BRIEFING_TARGET_SECONDS', '180'), 10),
+    // 인사+마무리에 배정하는 고정 여유. 기사당 = (총목표 - 이 값) / 기사수
+    introOutroSeconds: parseInt(optional('BRIEFING_INTRO_OUTRO_SECONDS', '30'), 10),
   },
   server: {
     adminEmails: optional('ADMIN_EMAILS', '').split(',').map(e => e.trim()).filter(Boolean),

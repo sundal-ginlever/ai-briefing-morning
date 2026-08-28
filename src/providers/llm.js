@@ -8,9 +8,8 @@ import { withRetry, isRetryable } from '../utils/retry.js'
 export async function generateScript(articles, override = {}) {
   const language       = override.briefing?.language       ?? config.briefing.language
   const targetSeconds  = override.briefing?.targetSeconds  ?? config.briefing.targetSeconds
-  const secondsPerStory = override.briefing?.secondsPerStory ?? config.briefing.secondsPerStory
   const customPrompt   = override.briefing?.customPrompt   ?? ''
-  const systemPrompt   = buildSystemPrompt(language, targetSeconds, customPrompt, articles.length, secondsPerStory)
+  const systemPrompt   = buildSystemPrompt(language, targetSeconds, customPrompt, articles.length)
   const userPrompt     = buildUserPrompt(articles)
 
   const provider = override.llm?.provider ?? config.llm.provider
@@ -40,8 +39,14 @@ async function dispatch(provider, model, systemPrompt, userPrompt) {
   }
 }
 
-function buildSystemPrompt(language, targetSeconds, customPrompt, articleCount = 0, secondsPerStory = 40) {
-  const wordCount     = Math.round(targetSeconds * 2.5)
+function buildSystemPrompt(language, targetSeconds, customPrompt, articleCount = 0) {
+  const wordCount = Math.round(targetSeconds * 2.5)
+  // 기사당 목표는 총 길이에서 파생한다 — 둘을 따로 설정하면 서로 어긋난 채
+  // "총 120초인데 기사당 40초×5" 같은 모순된 지시가 나간다(실제 발생 전례).
+  const introOutro    = config.briefing.introOutroSeconds
+  const secondsPerStory = articleCount > 0
+    ? Math.max(10, Math.round((targetSeconds - introOutro) / articleCount))
+    : 0
   const perStoryWords = Math.round(secondsPerStory * 2.5)
   const lengthGuidance = articleCount > 0
     ? `Target length: ${targetSeconds} seconds total when read aloud (~${wordCount} words). Give each of the ${articleCount} news stories roughly equal length — about ${perStoryWords} words each (~${secondsPerStory} seconds when spoken) — with a few extra sentences for the opening greeting and closing sign-off to round out the total.`

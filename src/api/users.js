@@ -3,7 +3,6 @@
 // 파이프라인과 REST API 양쪽에서 사용.
 
 import { getSupabase } from './supabase.js'
-import { logger }      from '../utils/logger.js'
 
 // ─── 조회 ─────────────────────────────────────────────────────────────────────
 
@@ -79,57 +78,9 @@ export async function getBriefingHistory(userId, limit = 30) {
   return data ?? []
 }
 
-// ─── 수정 ─────────────────────────────────────────────────────────────────────
-
-/**
- * 사용자 설정 업데이트 (부분 업데이트 지원).
- * Phase 4: custom_prompt, timezone 허용 필드 추가
- * @param {string} userId
- * @param {Partial<UserSettings>} patch
- */
-export async function updateUserSettings(userId, patch) {
-  // 허용된 필드만 통과
-  const allowed = [
-    'news_country', 'news_categories', 'news_keywords', 'news_page_size',
-    'llm_provider', 'llm_model',
-    'tts_provider', 'tts_voice', 'tts_speed',
-    'briefing_language', 'briefing_target_secs', 'custom_prompt',
-    'schedule_hour_utc', 'timezone', 'schedule_enabled',
-    'delivery_email',
-  ]
-  const safe = Object.fromEntries(
-    Object.entries(patch).filter(([k]) => allowed.includes(k))
-  )
-
-  if (Object.keys(safe).length === 0) {
-    throw new Error('No valid fields to update')
-  }
-
-  const sb = getSupabase()
-  const { data, error } = await sb
-    .from('a_user_settings')
-    .update(safe)
-    .eq('user_id', userId)
-    .select()
-    .single()
-
-  if (error) throw new Error(`updateUserSettings failed: ${error.message}`)
-  logger.info(`[users] Settings updated for userId=${userId}`)
-  return data
-}
-
-/**
- * DB 로그에 user_id 추가 (파이프라인 완료 후 호출).
- */
-export async function assignLogToUser(logId, userId) {
-  const sb = getSupabase()
-  const { error } = await sb
-    .from('a_briefing_logs')
-    .update({ user_id: userId })
-    .eq('id', logId)
-
-  if (error) logger.warn(`[users] assignLogToUser failed: ${error.message}`)
-}
+// 설정 쓰기는 여기 없다 — 2026-08 정리로 이 레포의 설정 변경 API를 걷어내면서,
+// 설정 수정은 맥미니 대시보드(99_open-board의 AI Brief 탭)로 일원화했다.
+// 이 레포는 설정을 읽어 파이프라인을 돌리기만 한다.
 
 // ─── 헬퍼: DB 설정 → 파이프라인 override 변환 ────────────────────────────────
 

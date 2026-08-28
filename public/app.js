@@ -1,340 +1,111 @@
-// ── State ──────────────────────────────────────────────────────────────────
-let SUPABASE_URL = ''
-let SUPABASE_ANON = ''
-let token = localStorage.getItem('mb_token')
-let currentUser = null
+// public/app.js
+// 공개 페이지 — 피드 주소 안내 + 지난 방송 목록. 인증·설정 기능은 없다
+// (설정은 맥미니 대시보드 99_open-board에서 관리).
 
-// Fetch config from the backend to get Supabase credentials
-async function loadConfig() {
-  try {
-    const res = await fetch('/api/config')
-    const config = await res.json()
-    SUPABASE_URL = config.SUPABASE_URL
-    SUPABASE_ANON = config.SUPABASE_ANON_KEY
-    if (token) showApp()
-  } catch (e) {
-    console.error('Failed to load configuration', e)
+let feedUrl = ''
+
+function fmtDuration(ms) {
+  if (!ms) return ''
+  const total = Math.round(ms / 1000)
+  const m = Math.floor(total / 60)
+  const s = String(total % 60).padStart(2, '0')
+  return `${m}분 ${s}초`
+}
+
+function fmtDate(iso) {
+  const [y, m, d] = iso.split('-')
+  return `${y}년 ${Number(m)}월 ${Number(d)}일`
+}
+
+function el(tag, className, text) {
+  const n = document.createElement(tag)
+  if (className) n.className = className
+  if (text != null) n.textContent = text
+  return n
+}
+
+function copyFeed() {
+  if (!feedUrl) return
+  const btn = document.getElementById('copy-btn')
+  const done = () => {
+    btn.textContent = '복사됨'
+    btn.classList.add('copied')
+    setTimeout(() => { btn.textContent = '주소 복사'; btn.classList.remove('copied') }, 1600)
+  }
+  // navigator.clipboard는 보안 컨텍스트에서만 동작하므로 실패 시 수동 선택으로 폴백
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(feedUrl).then(done).catch(selectFallback)
+  } else {
+    selectFallback()
   }
 }
 
-// ── Auth ───────────────────────────────────────────────────────────────────
-function switchAuthTab(tab) {
-  const isLogin = tab === 'login'
-  document.getElementById('auth-login').style.display  = isLogin ? '' : 'none'
-  document.getElementById('auth-signup').style.display = isLogin ? 'none' : ''
-  document.getElementById('tab-login-btn').style.background  = isLogin ? 'var(--accent)' : 'transparent'
-  document.getElementById('tab-signup-btn').style.background = isLogin ? 'transparent' : 'var(--accent)'
-  document.getElementById('tab-login-btn').style.color  = isLogin ? '#fff' : 'var(--muted)'
-  document.getElementById('tab-signup-btn').style.color = isLogin ? 'var(--muted)' : '#fff'
-  document.getElementById('auth-err').textContent = ''
-}
-
-async function login() {
-  const email = document.getElementById('auth-email').value.trim()
-  const pass  = document.getElementById('auth-pass').value
-  if (!email || !pass) return setAuthErr('이메일과 비밀번호를 입력하세요')
-  try {
-    const res = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
-      body: JSON.stringify({ email, password: pass })
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error_description || data.msg || '로그인 실패')
-    token = data.access_token
-    localStorage.setItem('mb_token', token)
-    showApp()
-  } catch(e) { setAuthErr(e.message) }
-}
-
-async function signup() {
-  const email = document.getElementById('signup-email').value.trim()
-  const pass  = document.getElementById('signup-pass').value
-  const pass2 = document.getElementById('signup-pass2').value
-  if (!email || !pass) return setAuthErr('이메일과 비밀번호를 입력하세요')
-  if (pass.length < 8)  return setAuthErr('비밀번호는 8자 이상이어야 합니다')
-  if (pass !== pass2)   return setAuthErr('비밀번호가 일치하지 않습니다')
-  try {
-    const res = await fetch(SUPABASE_URL + '/auth/v1/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
-      body: JSON.stringify({ email, password: pass })
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error_description || data.msg || '가입 실패')
-    // 이메일 확인이 비활성화된 경우 바로 access_token 반환
-    if (data.access_token) {
-      token = data.access_token
-      localStorage.setItem('mb_token', token)
-      showApp()
-    } else {
-      setAuthErr('', '가입 완료! 이메일 확인 링크를 클릭한 후 로그인하세요.')
-      switchAuthTab('login')
-    }
-  } catch(e) { setAuthErr(e.message) }
-}
-
-function setAuthErr(msg, ok) {
-  const el = document.getElementById('auth-err')
-  el.style.color = ok ? 'var(--green)' : 'var(--red)'
-  el.textContent = msg || ok || ''
-}
-
-function logout() {
-  localStorage.removeItem('mb_token')
-  location.reload()
-}
-
-// ── App Init ───────────────────────────────────────────────────────────────
-async function showApp() {
-  document.getElementById('auth-screen').style.display = 'none'
-  document.getElementById('app').style.display = 'flex'
-
-  const me = await api('GET', '/api/me')
-  if (!me) return
-  currentUser = me
-  document.getElementById('user-email').textContent = me.email
-
-  // Set the private podcast feed URL
-  const podcastUrl = `${location.protocol}//${location.host}/api/feed/${me.id}.xml`
-  const podcastInput = document.getElementById('podcast-url-input')
-  if (podcastInput) {
-    podcastInput.value = podcastUrl
-  }
-
-  loadStats()
-  loadLatest()
-}
-
-function copyPodcastUrl() {
-  const input = document.getElementById('podcast-url-input')
-  if (!input || !input.value) return
+function selectFallback() {
+  const input = document.getElementById('feed-url')
+  input.focus()
   input.select()
-  navigator.clipboard.writeText(input.value)
-  toast('팟캐스트 주소가 복사되었습니다!', 'ok')
 }
 
-// ── API helper ─────────────────────────────────────────────────────────────
-async function api(method, path, body) {
-  const opts = {
-    method,
-    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
-  }
-  if (body) opts.body = JSON.stringify(body)
-  const res = await fetch(path, opts)
-  if (res.status === 401) { logout(); return null }
-  if (!res.ok) { const d = await res.json(); toast(d.error || 'Error', 'fail'); return null }
-  return res.json()
-}
+function renderEpisodes(items) {
+  const box = document.getElementById('episodes')
+  box.textContent = ''
 
-// ── Tabs & Sidebar ───────────────────────────────────────────────────────────
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('show')
-  document.getElementById('sidebar-backdrop').classList.toggle('show')
-}
-
-function showTab(name, el) {
-  document.querySelectorAll('[id^=tab-]').forEach(t => t.classList.add('hidden'))
-  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'))
-  document.getElementById('tab-' + name).classList.remove('hidden')
-  el.classList.add('active')
-  if (name === 'settings') loadSettings()
-  if (name === 'history')  loadHistory()
-  
-  // 모바일에서 탭 선택 시 사이드바 닫기
-  document.getElementById('sidebar')?.classList.remove('show')
-  document.getElementById('sidebar-backdrop')?.classList.remove('show')
-}
-
-// ── Home ───────────────────────────────────────────────────────────────────
-async function loadStats() {
-  const data = await api('GET', '/api/history?limit=60')
-  if (!data) return
-  const h = data.history
-  document.getElementById('stat-total').textContent = h.length
-  // 연속 일수 계산
-  let streak = 0
-  const today = new Date().toISOString().slice(0,10)
-  const dates = new Set(h.map(r => r.date))
-  let d = new Date()
-  while (dates.has(d.toISOString().slice(0,10))) { streak++; d.setDate(d.getDate()-1) }
-  document.getElementById('stat-streak').textContent = streak + '일'
-}
-
-async function loadLatest() {
-  const me = currentUser
-  if (!me?.settings) return
-  // 스케줄 표시
-  const utcH = me.settings.schedule_hour_utc ?? 23
-  const kstH = (utcH + 9) % 24
-  document.getElementById('stat-schedule').textContent = String(kstH).padStart(2,'0') + ':00'
-
-  const data = await api('GET', '/api/history?limit=1')
-  if (!data || data.history.length === 0) return
-  const latest = data.history[0]
-  document.getElementById('latest-card').style.display = 'block'
-  document.getElementById('latest-content').innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <span style="font-weight:600">${latest.date}</span>
-      <span class="badge badge-green">${latest.llm_provider}</span>
-    </div>
-    <p style="font-size:14px;color:var(--muted);line-height:1.8;margin-bottom:16px">${latest.script?.slice(0,300)}...</p>
-    ${latest.audio_url ? `<audio controls src="${latest.audio_url}"></audio>` : ''}
-  `
-}
-
-// ── Manual Run ─────────────────────────────────────────────────────────────
-async function manualRun() {
-  const btn = document.getElementById('run-btn')
-  btn.disabled = true
-  document.getElementById('run-label').textContent = '실행 중...'
-  document.getElementById('run-spin').classList.remove('hidden')
-  document.getElementById('run-msg').textContent = ''
-
-  const res = await fetch('/api/run', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + token }
-  })
-
-  document.getElementById('run-spin').classList.add('hidden')
-  if (res.status === 202) {
-    document.getElementById('run-label').textContent = '✓ 진행 중'
-    document.getElementById('run-msg').textContent = '브리핑 생성 중입니다. 약 1-2분 후 이메일을 확인하세요.'
-    toast('파이프라인 시작됨', 'ok')
-    setTimeout(() => {
-      document.getElementById('run-label').textContent = '▶ 지금 실행'
-      btn.disabled = false
-    }, 60000)
-  } else {
-    const d = await res.json()
-    document.getElementById('run-label').textContent = '▶ 지금 실행'
-    btn.disabled = false
-    toast(d.error || '실행 실패', 'fail')
-  }
-}
-
-// ── Settings ───────────────────────────────────────────────────────────────
-async function loadSettings() {
-  const me = await api('GET', `/api/me?_t=${Date.now()}`)
-  if (!me) return
-  const s = me.settings
-  document.getElementById('s-country').value    = s.news_country
-  document.getElementById('s-categories').value = s.news_categories?.join(',') ?? ''
-  document.getElementById('s-keywords').value   = s.news_keywords?.join(',') ?? ''
-  document.getElementById('s-pagesize').value   = s.news_page_size
-  document.getElementById('s-llm').value        = s.llm_provider
-  document.getElementById('s-model').value      = s.llm_model
-  document.getElementById('s-ttsprovider').value = s.tts_provider
-  updateVoiceList(s.tts_voice)
-  document.getElementById('s-speed').value      = s.tts_speed
-  document.getElementById('s-lang').value       = s.briefing_language
-  document.getElementById('s-secs').value       = s.briefing_target_secs
-  document.getElementById('s-hour').value       = s.schedule_hour_utc
-  document.getElementById('s-timezone').value   = s.timezone || 'Asia/Seoul'
-  document.getElementById('s-prompt').value     = s.custom_prompt ?? ''
-  document.getElementById('s-enabled').checked  = s.schedule_enabled
-  document.getElementById('s-email').value      = s.delivery_email ?? ''
-}
-
-async function saveSettings() {
-  const btn = document.getElementById('save-btn')
-  btn.disabled = true
-  btn.textContent = '저장 중...'
-  const cats = document.getElementById('s-categories').value.split(',').map(c=>c.trim()).filter(Boolean)
-  const keys = document.getElementById('s-keywords').value.split(',').map(k=>k.trim()).filter(Boolean)
-  const patch = {
-    news_country:          document.getElementById('s-country').value,
-    news_categories:       cats,
-    news_keywords:         keys,
-    news_page_size:        parseInt(document.getElementById('s-pagesize').value),
-    llm_provider:          document.getElementById('s-llm').value,
-    llm_model:             document.getElementById('s-model').value,
-    tts_provider:          document.getElementById('s-ttsprovider').value,
-    tts_voice:             document.getElementById('s-voice').value,
-    tts_speed:             parseFloat(document.getElementById('s-speed').value),
-    briefing_language:     document.getElementById('s-lang').value,
-    briefing_target_secs:  parseInt(document.getElementById('s-secs').value),
-    schedule_hour_utc:     parseInt(document.getElementById('s-hour').value),
-    timezone:              document.getElementById('s-timezone').value,
-    custom_prompt:         document.getElementById('s-prompt').value || null,
-    schedule_enabled:      document.getElementById('s-enabled').checked,
-    delivery_email:        document.getElementById('s-email').value || null,
-  }
-  const res = await api('PUT', '/api/me/settings', patch)
-  btn.disabled = false
-  btn.textContent = '변경사항 저장'
-  if (res) {
-    toast('설정이 저장되었습니다', 'ok')
-  } else {
-    // api() helper already shows the backend error toast, so we don't need a generic one here.
-    // However, if we want to be sure, we can just log it or rely on api() helper's toast.
-  }
-}
-
-// ── History ────────────────────────────────────────────────────────────────
-async function loadHistory() {
-  const data = await api('GET', '/api/history?limit=30')
-  const tbody = document.getElementById('history-body')
-  if (!data || data.history.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--muted)">아직 브리핑 기록이 없습니다</td></tr>'
+  if (!items.length) {
+    box.appendChild(el('p', 'state', '아직 방송이 없습니다.'))
     return
   }
-  tbody.innerHTML = data.history.map(r => `
-    <tr>
-      <td style="font-weight:600;white-space:nowrap">${r.date}</td>
-      <td class="script-cell">${r.script ?? ''}</td>
-      <td><span class="badge badge-green">${r.llm_provider}</span></td>
-      <td style="color:var(--muted);white-space:nowrap">${r.duration_ms ? (r.duration_ms/1000).toFixed(1)+'s' : '—'}</td>
-      <td>${r.audio_url ? `<audio controls src="${r.audio_url}"></audio>` : '<span style="color:var(--muted)">없음</span>'}</td>
-    </tr>
-  `).join('')
-}
 
-// ── Toast ──────────────────────────────────────────────────────────────────
-function toast(msg, type = 'ok') {
-  const el = document.getElementById('toast')
-  el.textContent = (type === 'ok' ? '✓ ' : '✗ ') + msg
-  el.className = 'toast show ' + type
-  setTimeout(() => el.classList.remove('show'), 3000)
-}
+  for (const item of items) {
+    const card = el('div', 'episode')
 
-// ── Boot ───────────────────────────────────────────────────────────────────
-loadConfig()
-// ── Voice List Helper ──────────────────────────────────────────────────────
-function updateVoiceList(selectedVoice = null) {
-  const provider = document.getElementById('s-ttsprovider').value
-  const voiceSelect = document.getElementById('s-voice')
-  
-  const voices = {
-    openai: [
-      { v: 'coral',   n: 'Coral (Warm & Clear)' },
-      { v: 'ash',     n: 'Ash (Soft & Crisp)' },
-      { v: 'sage',    n: 'Sage (Natural & Calm)' },
-      { v: 'alloy',   n: 'Alloy (Neutral)' },
-      { v: 'echo',    n: 'Echo (Deep)' },
-      { v: 'fable',   n: 'Fable (British)' },
-      { v: 'onyx',    n: 'Onyx (Strong)' },
-      { v: 'nova',    n: 'Nova (Energetic)' },
-      { v: 'shimmer', n: 'Shimmer (Soft)' }
-    ],
-    google: [
-      { v: 'ko-KR-Neural2-A',  n: '한국어 (여성 - Neural2)' },
-      { v: 'ko-KR-Neural2-B',  n: '한국어 (남성 - Neural2)' },
-      { v: 'ko-KR-Neural2-C',  n: '한국어 (남성 2 - Neural2)' },
-      { v: 'ko-KR-Wavenet-A',  n: '한국어 (여성 - Wavenet)' },
-      { v: 'en-US-Neural2-F',  n: 'English (US - Neural2)' },
-      { v: 'en-US-Neural2-D',  n: 'English (US - Male)' },
-      { v: 'ja-JP-Neural2-B',  n: '日本語 (여성 - Neural2)' }
-    ],
-    none: [
-      { v: 'none', n: 'N/A' }
-    ]
-  }
+    const head = el('div', 'ep-head')
+    head.appendChild(el('span', 'ep-date', fmtDate(item.date)))
+    head.appendChild(el('span', 'ep-dur', fmtDuration(item.durationMs)))
+    card.appendChild(head)
 
-  const list = voices[provider] || voices.openai
-  voiceSelect.innerHTML = list.map(v => `<option value="${v.v}">${v.n}</option>`).join('')
-  
-  if (selectedVoice) {
-    voiceSelect.value = selectedVoice
+    const audio = el('audio')
+    audio.controls = true
+    audio.preload = 'none'
+    audio.src = item.audioUrl
+    card.appendChild(audio)
+
+    if (item.script) {
+      const toggle = el('button', 'ep-toggle', '대본 보기')
+      const script = el('div', 'ep-script', item.script)
+      script.hidden = true
+      toggle.onclick = () => {
+        script.hidden = !script.hidden
+        toggle.textContent = script.hidden ? '대본 보기' : '대본 접기'
+      }
+      card.appendChild(toggle)
+      card.appendChild(script)
+    }
+
+    box.appendChild(card)
   }
 }
+
+async function load() {
+  try {
+    const meta = await (await fetch('/api/meta')).json()
+    feedUrl = new URL(meta.feedPath, location.origin).href
+    document.getElementById('feed-url').value = feedUrl
+  } catch {
+    document.getElementById('feed-url').value = '피드 주소를 불러오지 못했습니다'
+  }
+
+  try {
+    const res = await fetch('/api/history')
+    if (!res.ok) throw new Error(res.status)
+    const { items } = await res.json()
+    renderEpisodes(items)
+  } catch {
+    const box = document.getElementById('episodes')
+    box.textContent = ''
+    box.appendChild(el('p', 'state', '방송 목록을 불러오지 못했습니다.'))
+  }
+}
+
+document.getElementById('copy-btn').addEventListener('click', copyFeed)
+
+load()

@@ -68,7 +68,6 @@ export const config = {
   supabase: {
     url:        optional('SUPABASE_URL'),
     serviceKey: optional('SUPABASE_SERVICE_KEY'),
-    anonKey:    optional('SUPABASE_ANON_KEY'),   // ← 대시보드 클라이언트 인증용
   },
   storage: {
     provider:  storageProvider,
@@ -94,9 +93,5 @@ export const config = {
     targetSeconds:  parseInt(optional('BRIEFING_TARGET_SECONDS', '180'), 10),
     // 인사+마무리에 배정하는 고정 여유. 기사당 = (총목표 - 이 값) / 기사수
     introOutroSeconds: parseInt(optional('BRIEFING_INTRO_OUTRO_SECONDS', '30'), 10),
-  },
-  server: {
-    adminEmails: optional('ADMIN_EMAILS', '').split(',').map(e => e.trim()).filter(Boolean),
-    runSecret:   optional('RUN_SECRET'),
   },
 }

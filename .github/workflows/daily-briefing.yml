@@ -64,7 +64,6 @@ jobs:
           OPENAI_API_KEY:        ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
-          SUPABASE_ANON_KEY:     ${{ secrets.SUPABASE_ANON_KEY }}
           SMTP_USER:             ${{ secrets.SMTP_USER }}
           SMTP_PASS:             ${{ secrets.SMTP_PASS }}
           EMAIL_FROM:            ${{ secrets.EMAIL_FROM }}
@@ -72,14 +71,13 @@ jobs:
           # ── 선택 Secrets ──────────────────────────────────────────────────
           GEMINI_API_KEY:        ${{ secrets.GEMINI_API_KEY }}
 
-          # ── Variables (GitHub repo → Settings → Variables) ────────────────
-          ADMIN_EMAILS:          ${{ vars.ADMIN_EMAILS }}
+          # ── Variables (미등록 시 아래 기본값 사용. 현재 repo Variables는 비어 있어
+          #    전부 기본값으로 동작한다 — 값을 바꾸려면 Variables에 등록하면 된다) ──
           LLM_PROVIDER:          ${{ vars.LLM_PROVIDER || 'openai' }}
           TTS_PROVIDER:          ${{ vars.TTS_PROVIDER || 'openai' }}
           STORAGE_PROVIDER:      supabase
           EMAIL_PROVIDER:        smtp
           STORAGE_BUCKET:        ${{ vars.STORAGE_BUCKET || 'ai-briefing-audio' }}
-          EMAIL_TO:              ${{ secrets.EMAIL_TO }}
           NEWS_COUNTRY:          ${{ vars.NEWS_COUNTRY || 'us' }}
           NEWS_CATEGORIES:       ${{ vars.NEWS_CATEGORIES || 'general,technology' }}
           NEWS_PAGE_SIZE:        ${{ vars.NEWS_PAGE_SIZE || '5' }}
@@ -94,11 +92,17 @@ jobs:
           # 'false'로 되돌리면 기존 Gemini TTS 경로로 즉시 복귀한다.
           SKIP_AUDIO:            ${{ vars.SKIP_AUDIO || 'true' }}
 
+          # 수동 실행 입력은 env로 받아 셸에 인용부호와 함께 넘긴다.
+          # run 블록에 ${{ }}를 직접 적으면 입력 문자열이 스크립트로 치환·실행되어
+          # 명령 주입이 가능해진다(actionlint가 경고하는 패턴).
+          INPUT_DRY_RUN:         ${{ github.event.inputs.dry_run }}
+          INPUT_USER_ID:         ${{ github.event.inputs.user_id }}
+
         run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
             node src/pipeline/runner.js --dry-run
-          elif [ -n "${{ github.event.inputs.user_id }}" ]; then
-            node src/pipeline/runner.js --user=${{ github.event.inputs.user_id }}
+          elif [ -n "$INPUT_USER_ID" ]; then
+            node src/pipeline/runner.js --user="$INPUT_USER_ID"
           else
             node src/pipeline/runner.js
           fi

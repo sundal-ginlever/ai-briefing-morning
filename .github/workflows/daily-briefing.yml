@@ -34,10 +34,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
@@ -74,7 +74,9 @@ jobs:
           # ── Variables (미등록 시 아래 기본값 사용. 현재 repo Variables는 비어 있어
           #    전부 기본값으로 동작한다 — 값을 바꾸려면 Variables에 등록하면 된다) ──
           LLM_PROVIDER:          ${{ vars.LLM_PROVIDER || 'gemini' }}
-          TTS_PROVIDER:          ${{ vars.TTS_PROVIDER || 'openai' }}
+          # 평시엔 SKIP_AUDIO=true라 호출되지 않는다. 맥미니 장애로 SKIP_AUDIO를
+          # false로 되돌릴 때 쓰이는 긴급 대체 경로의 제공자.
+          TTS_PROVIDER:          ${{ vars.TTS_PROVIDER || 'gemini' }}
           STORAGE_PROVIDER:      supabase
           EMAIL_PROVIDER:        smtp
           STORAGE_BUCKET:        ${{ vars.STORAGE_BUCKET || 'ai-briefing-audio' }}

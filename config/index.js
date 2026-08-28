@@ -25,7 +25,7 @@ function validateChoice(key, value, valid) {
   return value
 }
 
-const llmProvider     = validateChoice('LLM_PROVIDER',     optional('LLM_PROVIDER',     'openai'), VALID_LLM_PROVIDERS)
+const llmProvider     = validateChoice('LLM_PROVIDER',     optional('LLM_PROVIDER',     'gemini'), VALID_LLM_PROVIDERS)
 const ttsProvider     = validateChoice('TTS_PROVIDER',     optional('TTS_PROVIDER',     'openai'), VALID_TTS_PROVIDERS)
 const storageProvider = validateChoice('STORAGE_PROVIDER', optional('STORAGE_PROVIDER', 'local'),  VALID_STORAGE)
 const emailProvider   = validateChoice('EMAIL_PROVIDER',   optional('EMAIL_PROVIDER',   'none'),   VALID_EMAIL)

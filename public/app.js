@@ -2,12 +2,15 @@
 // 공개 페이지 — 피드 주소 안내 + 지난 방송 목록. 인증·설정 기능은 없다
 // (설정은 맥미니 대시보드 99_open-board에서 관리).
 //
-// 상단 소개 문단은 언어 토글을 타지 않고 한글·영문을 항상 함께 노출한다.
-// 나머지 UI 문구만 KO/EN 토글로 바꾼다 — 라벨까지 전부 이중 표기하면
-// 화면이 두 배로 길어져 정작 본문인 방송 목록이 밀린다.
+// 소개 문단을 포함한 모든 문구가 KO/EN 토글을 따른다(선택은 localStorage에 유지).
 
 const STRINGS = {
   ko: {
+    intro:
+      "매일 새벽, 세계가 잠든 사이에도 멈추지 않은 이야기들을 모읍니다. " +
+      "인공지능이 그려내는 내일의 지형, 비트코인과 크립토 시장에 드나드는 밀물과 썰물, " +
+      "그리고 팔란티어에서 안두릴과 에레보르로 이어지는 피터 틸 사단처럼 조용히 판을 바꾸어 가는 이름들까지. " +
+      "흩어진 소식을 한 편의 이야기로 엮어, 당신의 아침에 목소리로 도착합니다.",
     subscribeTitle: "팟캐스트 구독",
     subscribeDesc:  "아래 주소를 팟캐스트 앱에 추가하면 새 방송을 자동으로 받아볼 수 있습니다.",
     copy:           "주소 복사",
@@ -22,6 +25,12 @@ const STRINGS = {
     footer:         "AI가 매일 자동으로 만드는 개인용 브리핑입니다.",
   },
   en: {
+    intro:
+      "Every dawn, we gather the stories that kept moving while the world slept — " +
+      "the shifting landscape drawn by artificial intelligence, the tides running in and out of " +
+      "Bitcoin and the wider crypto market, and the quiet names remaking the board, running from " +
+      "Palantir through Anduril and Erebor along the Thiel network. " +
+      "Scattered headlines, woven into a single narrative, arriving as a voice at the start of your day.",
     subscribeTitle: "Subscribe",
     subscribeDesc:  "Add the address below to your podcast app to receive new episodes automatically.",
     copy:           "Copy address",

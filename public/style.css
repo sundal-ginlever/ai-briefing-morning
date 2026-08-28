@@ -37,16 +37,12 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; line-height: 1.3 
 .lang-toggle button:hover { background: var(--surface-2); color: var(--text) }
 .lang-toggle button.active { background: var(--accent); color: #fff }
 
-/* ── 소개 (언어 토글과 무관하게 한·영 상시 노출) ── */
+/* ── 소개 ── */
 .intro {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r); padding: 20px 22px; margin-bottom: 36px;
 }
 .intro p { color: var(--text); font-size: 15px; line-height: 1.75 }
-.intro p[lang="en"] {
-  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);
-  color: var(--muted); font-size: 14px;
-}
 
 /* ── 섹션 ── */
 section { margin-bottom: 36px }

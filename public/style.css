@@ -17,10 +17,36 @@ body {
 .wrap { max-width: 720px; margin: 0 auto; padding: 40px 20px 64px }
 
 /* ── 헤더 ── */
-header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px }
+.topbar {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 20px;
+}
+header { display: flex; align-items: center; gap: 14px; min-width: 0 }
 header img { width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0 }
 h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; line-height: 1.3 }
-.tagline { color: var(--muted); font-size: 14px; margin-bottom: 32px }
+
+.lang-toggle {
+  display: flex; flex-shrink: 0; border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+}
+.lang-toggle button {
+  background: var(--surface); color: var(--muted); border: none;
+  padding: 6px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
+  letter-spacing: .03em; border-radius: 0;
+}
+.lang-toggle button:hover { background: var(--surface-2); color: var(--text) }
+.lang-toggle button.active { background: var(--accent); color: #fff }
+
+/* ── 소개 (언어 토글과 무관하게 한·영 상시 노출) ── */
+.intro {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 22px; margin-bottom: 36px;
+}
+.intro p { color: var(--text); font-size: 15px; line-height: 1.75 }
+.intro p[lang="en"] {
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 14px;
+}
 
 /* ── 섹션 ── */
 section { margin-bottom: 36px }
@@ -83,4 +109,7 @@ footer {
   .wrap { padding: 28px 16px 48px }
   .feed-row { flex-direction: column }
   h1 { font-size: 19px }
+  header img { width: 44px; height: 44px }
+  .intro { padding: 16px 18px }
+  .intro p { font-size: 14px }
 }

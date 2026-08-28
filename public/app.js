@@ -1,111 +1,183 @@
 // public/app.js
 // 공개 페이지 — 피드 주소 안내 + 지난 방송 목록. 인증·설정 기능은 없다
 // (설정은 맥미니 대시보드 99_open-board에서 관리).
+//
+// 상단 소개 문단은 언어 토글을 타지 않고 한글·영문을 항상 함께 노출한다.
+// 나머지 UI 문구만 KO/EN 토글로 바꾼다 — 라벨까지 전부 이중 표기하면
+// 화면이 두 배로 길어져 정작 본문인 방송 목록이 밀린다.
 
-let feedUrl = ''
+const STRINGS = {
+  ko: {
+    subscribeTitle: "팟캐스트 구독",
+    subscribeDesc:  "아래 주소를 팟캐스트 앱에 추가하면 새 방송을 자동으로 받아볼 수 있습니다.",
+    copy:           "주소 복사",
+    copied:         "복사됨",
+    episodesTitle:  "지난 방송",
+    loading:        "불러오는 중…",
+    empty:          "아직 방송이 없습니다.",
+    scriptShow:     "대본 보기",
+    scriptHide:     "대본 접기",
+    feedError:      "피드 주소를 불러오지 못했습니다",
+    listError:      "방송 목록을 불러오지 못했습니다.",
+    footer:         "AI가 매일 자동으로 만드는 개인용 브리핑입니다.",
+  },
+  en: {
+    subscribeTitle: "Subscribe",
+    subscribeDesc:  "Add the address below to your podcast app to receive new episodes automatically.",
+    copy:           "Copy address",
+    copied:         "Copied",
+    episodesTitle:  "Past episodes",
+    loading:        "Loading…",
+    empty:          "No episodes yet.",
+    scriptShow:     "Show transcript",
+    scriptHide:     "Hide transcript",
+    feedError:      "Could not load the feed address",
+    listError:      "Could not load the episode list.",
+    footer:         "A personal briefing generated automatically by AI, every day.",
+  },
+};
 
-function fmtDuration(ms) {
-  if (!ms) return ''
-  const total = Math.round(ms / 1000)
-  const m = Math.floor(total / 60)
-  const s = String(total % 60).padStart(2, '0')
-  return `${m}분 ${s}초`
+let lang = "ko";
+let feedUrl = "";
+let episodes = null;
+
+function t(key) {
+  return STRINGS[lang][key];
 }
 
-function fmtDate(iso) {
-  const [y, m, d] = iso.split('-')
-  return `${y}년 ${Number(m)}월 ${Number(d)}일`
+// 길이는 언어와 무관하게 2m25s 형식으로 고정한다(숫자 표기라 번역이 필요 없다).
+function fmtDuration(ms) {
+  if (!ms) return "";
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}m${String(total % 60).padStart(2, "0")}s`;
 }
 
 function el(tag, className, text) {
-  const n = document.createElement(tag)
-  if (className) n.className = className
-  if (text != null) n.textContent = text
-  return n
+  const n = document.createElement(tag);
+  if (className) n.className = className;
+  if (text != null) n.textContent = text;
+  return n;
 }
 
 function copyFeed() {
-  if (!feedUrl) return
-  const btn = document.getElementById('copy-btn')
+  if (!feedUrl) return;
+  const btn = document.getElementById("copy-btn");
   const done = () => {
-    btn.textContent = '복사됨'
-    btn.classList.add('copied')
-    setTimeout(() => { btn.textContent = '주소 복사'; btn.classList.remove('copied') }, 1600)
-  }
+    btn.textContent = t("copied");
+    btn.classList.add("copied");
+    setTimeout(() => {
+      btn.textContent = t("copy");
+      btn.classList.remove("copied");
+    }, 1600);
+  };
   // navigator.clipboard는 보안 컨텍스트에서만 동작하므로 실패 시 수동 선택으로 폴백
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(feedUrl).then(done).catch(selectFallback)
+    navigator.clipboard.writeText(feedUrl).then(done).catch(selectFallback);
   } else {
-    selectFallback()
+    selectFallback();
   }
 }
 
 function selectFallback() {
-  const input = document.getElementById('feed-url')
-  input.focus()
-  input.select()
+  const input = document.getElementById("feed-url");
+  input.focus();
+  input.select();
 }
 
-function renderEpisodes(items) {
-  const box = document.getElementById('episodes')
-  box.textContent = ''
+function renderEpisodes() {
+  const box = document.getElementById("episodes");
+  box.textContent = "";
 
-  if (!items.length) {
-    box.appendChild(el('p', 'state', '아직 방송이 없습니다.'))
-    return
+  if (episodes === null) {
+    box.appendChild(el("p", "state", t("loading")));
+    return;
+  }
+  if (episodes === false) {
+    box.appendChild(el("p", "state", t("listError")));
+    return;
+  }
+  if (!episodes.length) {
+    box.appendChild(el("p", "state", t("empty")));
+    return;
   }
 
-  for (const item of items) {
-    const card = el('div', 'episode')
+  for (const item of episodes) {
+    const card = el("div", "episode");
 
-    const head = el('div', 'ep-head')
-    head.appendChild(el('span', 'ep-date', fmtDate(item.date)))
-    head.appendChild(el('span', 'ep-dur', fmtDuration(item.durationMs)))
-    card.appendChild(head)
+    const head = el("div", "ep-head");
+    // 날짜는 YYYY-MM-DD 그대로 — 언어별 표기를 만들지 않는다.
+    head.appendChild(el("span", "ep-date", item.date));
+    head.appendChild(el("span", "ep-dur", fmtDuration(item.durationMs)));
+    card.appendChild(head);
 
-    const audio = el('audio')
-    audio.controls = true
-    audio.preload = 'none'
-    audio.src = item.audioUrl
-    card.appendChild(audio)
+    const audio = el("audio");
+    audio.controls = true;
+    audio.preload = "none";
+    audio.src = item.audioUrl;
+    card.appendChild(audio);
 
     if (item.script) {
-      const toggle = el('button', 'ep-toggle', '대본 보기')
-      const script = el('div', 'ep-script', item.script)
-      script.hidden = true
+      const toggle = el("button", "ep-toggle", t("scriptShow"));
+      const script = el("div", "ep-script", item.script);
+      script.hidden = true;
       toggle.onclick = () => {
-        script.hidden = !script.hidden
-        toggle.textContent = script.hidden ? '대본 보기' : '대본 접기'
-      }
-      card.appendChild(toggle)
-      card.appendChild(script)
+        script.hidden = !script.hidden;
+        toggle.textContent = script.hidden ? t("scriptShow") : t("scriptHide");
+      };
+      card.appendChild(toggle);
+      card.appendChild(script);
     }
 
-    box.appendChild(card)
+    box.appendChild(card);
   }
+}
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  for (const node of document.querySelectorAll("[data-i18n]")) {
+    node.textContent = t(node.dataset.i18n);
+  }
+  for (const btn of document.querySelectorAll(".lang-toggle button")) {
+    btn.classList.toggle("active", btn.dataset.lang === lang);
+  }
+  if (!feedUrl) document.getElementById("feed-url").value = t("feedError");
+  renderEpisodes();
+}
+
+function setLang(next) {
+  lang = next;
+  try { localStorage.setItem("mb_lang", next); } catch { /* 사생활 모드 등 — 무시 */ }
+  applyLang();
 }
 
 async function load() {
   try {
-    const meta = await (await fetch('/api/meta')).json()
-    feedUrl = new URL(meta.feedPath, location.origin).href
-    document.getElementById('feed-url').value = feedUrl
+    const meta = await (await fetch("/api/meta")).json();
+    feedUrl = new URL(meta.feedPath, location.origin).href;
+    document.getElementById("feed-url").value = feedUrl;
   } catch {
-    document.getElementById('feed-url').value = '피드 주소를 불러오지 못했습니다'
+    document.getElementById("feed-url").value = t("feedError");
   }
 
   try {
-    const res = await fetch('/api/history')
-    if (!res.ok) throw new Error(res.status)
-    const { items } = await res.json()
-    renderEpisodes(items)
+    const res = await fetch("/api/history");
+    if (!res.ok) throw new Error(res.status);
+    episodes = (await res.json()).items;
   } catch {
-    const box = document.getElementById('episodes')
-    box.textContent = ''
-    box.appendChild(el('p', 'state', '방송 목록을 불러오지 못했습니다.'))
+    episodes = false;
   }
+  renderEpisodes();
 }
 
-document.getElementById('copy-btn').addEventListener('click', copyFeed)
+try {
+  const saved = localStorage.getItem("mb_lang");
+  if (saved === "ko" || saved === "en") lang = saved;
+} catch { /* 무시 */ }
 
-load()
+document.getElementById("copy-btn").addEventListener("click", copyFeed);
+for (const btn of document.querySelectorAll(".lang-toggle button")) {
+  btn.addEventListener("click", () => setLang(btn.dataset.lang));
+}
+
+applyLang();
+load();

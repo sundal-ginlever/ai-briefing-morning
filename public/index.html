@@ -4,38 +4,56 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>☀️ Morning Briefing</title>
-<meta name="description" content="매일 아침 AI 앵커가 전하는 뉴스 브리핑. RSS로 구독하거나 지난 방송을 바로 들어보세요.">
+<meta name="description" content="매일 아침, AI·비트코인·크립토 시장과 팔란티어·안두릴·에레보르의 최신 흐름을 한 편의 이야기로 엮어 목소리로 전하는 뉴스 브리핑.">
 <link rel="icon" href="/a_thumbnail.png">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <div class="wrap">
 
-  <header>
-    <img src="/a_thumbnail.png" alt="">
-    <div>
+  <div class="topbar">
+    <header>
+      <img src="/a_thumbnail.png" alt="">
       <h1>☀️ Morning Briefing</h1>
+    </header>
+    <div class="lang-toggle" role="group" aria-label="Language">
+      <button id="lang-ko" data-lang="ko">KO</button>
+      <button id="lang-en" data-lang="en">EN</button>
     </div>
-  </header>
-  <p class="tagline">매일 아침 AI 앵커가 전하는 뉴스 브리핑입니다.</p>
+  </div>
+
+  <!-- 이 카드는 언어 토글과 무관하게 항상 한글·영문을 함께 보여준다.
+       처음 들어온 사람이 "이게 무슨 서비스인지"는 어느 쪽이든 읽을 수 있어야 하므로. -->
+  <section class="intro">
+    <p lang="ko">매일 새벽, 세계가 잠든 사이에도 멈추지 않은 이야기들을 모읍니다.
+    인공지능이 그려내는 내일의 지형, 비트코인과 크립토 시장에 드나드는 밀물과 썰물,
+    그리고 팔란티어와 팔머 럭키가 세운 안두릴·에레보르처럼 조용히 판을 바꾸어 가는 이름들까지.
+    흩어진 소식을 한 편의 이야기로 엮어, 당신의 아침에 목소리로 도착합니다.</p>
+
+    <p lang="en">Every dawn, we gather the stories that kept moving while the world slept —
+    the shifting landscape drawn by artificial intelligence, the tides running in and out of
+    Bitcoin and the wider crypto market, and the quiet names remaking the board, from Palantir
+    to Palmer Luckey's Anduril and Erebor. Scattered headlines, woven into a single narrative,
+    arriving as a voice at the start of your day.</p>
+  </section>
 
   <section>
-    <h2>팟캐스트 구독</h2>
+    <h2 data-i18n="subscribeTitle"></h2>
     <div class="feed-card">
-      <p>아래 주소를 팟캐스트 앱에 추가하면 새 방송을 자동으로 받아볼 수 있습니다.</p>
+      <p data-i18n="subscribeDesc"></p>
       <div class="feed-row">
-        <input class="feed-url" id="feed-url" readonly value="불러오는 중…">
-        <button id="copy-btn">주소 복사</button>
+        <input class="feed-url" id="feed-url" readonly value="…">
+        <button id="copy-btn" data-i18n="copy"></button>
       </div>
     </div>
   </section>
 
   <section>
-    <h2>지난 방송</h2>
-    <div id="episodes"><p class="state">불러오는 중…</p></div>
+    <h2 data-i18n="episodesTitle"></h2>
+    <div id="episodes"><p class="state" data-i18n="loading"></p></div>
   </section>
 
-  <footer>AI가 매일 자동으로 만드는 개인용 브리핑입니다.</footer>
+  <footer data-i18n="footer"></footer>
 
 </div>
 <script src="/app.js"></script>

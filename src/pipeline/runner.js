@@ -56,9 +56,8 @@ export async function runPipeline({ userId = null, override = {}, forceDate = nu
   const briefingOpts = override.briefing ?? {}
   const emailTo      = override.email?.to || config.email.to
 
-  // LLM/TTS per-user override — config injection
-  const llmOpts = override.llm ?? {}
-  const ttsOpts = override.tts ?? {}
+  // LLM/TTS 설정은 override 객체째로 generateScript/synthesizeSpeech에 넘어간다
+  // (여기서 따로 풀어 쓰던 변수가 있었으나 아무도 읽지 않아 제거).
 
   // Step 1 — 뉴스 수집 (pool 우선, 폴백: 실시간 호출)
   logger.info(`${userTag} [1/8] Fetching news`)

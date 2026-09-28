@@ -43,7 +43,12 @@ export const config = {
   llm: {
     provider: llmProvider,
     openai:  { apiKey: optional('OPENAI_API_KEY'), model: optional('OPENAI_MODEL', 'gpt-4o-mini') },
-    gemini:  { apiKey: optional('GEMINI_API_KEY'), model: optional('GEMINI_MODEL', 'gemini-3.5-flash') },
+    gemini:  {
+      apiKey: optional('GEMINI_API_KEY'),
+      model:  optional('GEMINI_MODEL', 'gemini-3.5-flash'),
+      // 주 모델이 과부하(503)로 재시도까지 전부 실패할 때만 쓰는 우회 모델
+      fallbackModel: optional('GEMINI_FALLBACK_MODEL', 'gemini-2.5-flash'),
+    },
     ollama:  { baseUrl: optional('OLLAMA_BASE_URL', 'http://localhost:11434'), model: optional('OLLAMA_MODEL', 'llama3.2') },
   },
   tts: {

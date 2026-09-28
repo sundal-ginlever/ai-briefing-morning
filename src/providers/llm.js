@@ -17,10 +17,22 @@ export async function generateScript(articles, override = {}) {
 
   logger.info(`[llm] provider="${provider}" model="${model}" customPrompt=${!!customPrompt}`)
 
-  return withRetry(
-    () => dispatch(provider, model, systemPrompt, userPrompt),
-    { label: `llm:${provider}`, maxAttempts: 3, baseDelayMs: 2000, retryIf: isRetryable }
+  const run = (m) => withRetry(
+    () => dispatch(provider, m, systemPrompt, userPrompt),
+    { label: `llm:${provider}:${m}`, maxAttempts: 3, baseDelayMs: 2000, retryIf: isRetryable }
   )
+
+  // 같은 모델 재시도만으로는 과부하(503 "high demand")를 못 넘는다 — 2026-09 실측으로
+  // gemini-3.5-flash 생성 시도의 절반이 3회 재시도 모두 503으로 끝났다. 다른 모델은
+  // 같은 시각에도 정상이라, 재시도가 전부 실패하면 폴백 모델로 한 번 더 간다.
+  const fallback = provider === 'gemini' ? config.llm.gemini.fallbackModel : null
+  try {
+    return await run(model)
+  } catch (err) {
+    if (!fallback || fallback === model || !isRetryable(err)) throw err
+    logger.warn(`[llm] ${model} 실패 — 폴백 모델 ${fallback}로 전환`)
+    return run(fallback)
+  }
 }
 
 function getModel(provider, overrideModel) {
